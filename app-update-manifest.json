@@ -4,7 +4,7 @@
   "latestVersion": "1.1.2",
   "channel": "stable",
   "mandatory": false,
-  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/tag/v1.1.2",
+  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.2/ZyroAi-v1.1.2.apk",
   "releaseNotes": [
     "Verified Supabase cloud workspace persistence over HTTPS",
     "Device-scoped workspace data now survives beyond local fallback mode",
