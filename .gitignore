@@ -1,0 +1,32 @@
+﻿# Node / web
+node_modules/
+web_react/node_modules/
+backend/node_modules/
+web_react/dist/
+
+# Flutter / Android
+mobile_flutter/.dart_tool/
+mobile_flutter/build/
+mobile_flutter/.flutter-plugins
+mobile_flutter/.flutter-plugins-dependencies
+mobile_flutter/android/.gradle/
+
+# Logs
+*.log
+web_react/*.log
+backend/*.log
+mobile_flutter/*.log
+
+# Env / secrets
+.env
+.env.*
+backend/.env
+backend/.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+backend/chief.db.json
+
