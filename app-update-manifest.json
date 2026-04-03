@@ -1,13 +1,13 @@
 {
   "appName": "ZyroAi",
   "currentVersion": "1.0.0",
-  "latestVersion": "1.1.2",
+  "latestVersion": "1.1.3",
   "channel": "stable",
   "mandatory": false,
-  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.2/ZyroAi-v1.1.2.apk",
+  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.3/ZyroAi-v1.1.3.apk",
   "releaseNotes": [
-    "Verified Supabase cloud workspace persistence over HTTPS",
-    "Device-scoped workspace data now survives beyond local fallback mode",
-    "Release packaging refreshed for Android distribution"
+    "Fixed client-version-aware in-app update prompts",
+    "Updated Android package with the latest ZyroAi cloud sync logic",
+    "Refined release delivery so updated users stop seeing stale update banners"
   ]
 }
