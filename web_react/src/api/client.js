@@ -37,24 +37,23 @@ async function request(path, options = {}, errorText = "Request failed") {
 
 export const chiefDeviceId = DEVICE_ID;
 
-
 export async function clearLocalState() {
   localStorage.removeItem(WORKSPACE_CACHE_KEY);
   localStorage.removeItem(DEVICE_KEY);
-  localStorage.removeItem('zyroai_installed_version');
+  localStorage.removeItem("zyroai_installed_version");
   const keysToRemove = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key && key.startsWith('zyroai_update_dismissed_')) {
+    if (key && key.startsWith("zyroai_update_dismissed_")) {
       keysToRemove.push(key);
     }
   }
   keysToRemove.forEach((key) => localStorage.removeItem(key));
-  if ('serviceWorker' in navigator) {
+  if ("serviceWorker" in navigator) {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((registration) => registration.unregister()));
   }
-  if ('caches' in window) {
+  if ("caches" in window) {
     const cacheKeys = await caches.keys();
     await Promise.all(cacheKeys.map((key) => caches.delete(key)));
   }
@@ -75,16 +74,38 @@ export function readCachedWorkspace() {
 }
 
 export function subscribeToWorkspace(onMessage) {
-  const stream = new EventSource(`${API_BASE}/stream?deviceId=${encodeURIComponent(DEVICE_ID)}`);
-  stream.onmessage = (event) => {
-    const payload = JSON.parse(event.data);
-    cacheWorkspace(payload);
-    onMessage(payload);
+  let stream = null;
+  let reconnectTimer = null;
+  let closed = false;
+
+  const connect = () => {
+    if (closed) return;
+    stream = new EventSource(`${API_BASE}/stream?deviceId=${encodeURIComponent(DEVICE_ID)}`);
+    stream.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        cacheWorkspace(payload);
+        onMessage(payload);
+      } catch {
+        // Ignore malformed stream payloads and wait for the next update.
+      }
+    };
+    stream.onerror = () => {
+      stream?.close();
+      if (closed) return;
+      reconnectTimer = window.setTimeout(connect, 3000);
+    };
   };
-  stream.onerror = () => {
-    stream.close();
+
+  connect();
+
+  return () => {
+    closed = true;
+    if (reconnectTimer) {
+      window.clearTimeout(reconnectTimer);
+    }
+    stream?.close();
   };
-  return () => stream.close();
 }
 
 export async function fetchWorkspace() {
@@ -113,153 +134,59 @@ export function fetchDashboard() {
 }
 
 export function addTask(payload) {
-  return request(
-    "/tasks",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    "Task creation failed"
-  );
+  return request("/tasks", { method: "POST", body: JSON.stringify(payload) }, "Task creation failed");
 }
 
 export function updateTaskStatus(taskId, status) {
-  return request(
-    `/tasks/${taskId}/status`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ status })
-    },
-    "Task update failed"
-  );
+  return request(`/tasks/${taskId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, "Task update failed");
 }
 
 export function decide(payload) {
-  return request(
-    "/decide",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    "Decision request failed"
-  );
+  return request("/decide", { method: "POST", body: JSON.stringify(payload) }, "Decision request failed");
 }
 
 export function addCallLog(caller, transcript) {
-  return request(
-    "/communications/call-log",
-    {
-      method: "POST",
-      body: JSON.stringify({ caller, transcript })
-    },
-    "Call analysis failed"
-  );
+  return request("/communications/call-log", { method: "POST", body: JSON.stringify({ caller, transcript }) }, "Call analysis failed");
 }
 
 export function generateAutoReply(sender, context, until) {
-  return request(
-    "/messages/auto-reply",
-    {
-      method: "POST",
-      body: JSON.stringify({ sender, context, until })
-    },
-    "Auto-reply failed"
-  );
+  return request("/messages/auto-reply", { method: "POST", body: JSON.stringify({ sender, context, until }) }, "Auto-reply failed");
 }
 
 export function handleIncomingCall(caller, transcript) {
-  return request(
-    "/communications/incoming-call",
-    {
-      method: "POST",
-      body: JSON.stringify({ caller, transcript })
-    },
-    "Incoming call handling failed"
-  );
+  return request("/communications/incoming-call", { method: "POST", body: JSON.stringify({ caller, transcript }) }, "Incoming call handling failed");
 }
 
 export function addMemory(hint, note) {
-  return request(
-    "/memory",
-    {
-      method: "POST",
-      body: JSON.stringify({ hint, note })
-    },
-    "Memory save failed"
-  );
+  return request("/memory", { method: "POST", body: JSON.stringify({ hint, note }) }, "Memory save failed");
 }
 
 export function addHabit(name) {
-  return request(
-    "/habits",
-    {
-      method: "POST",
-      body: JSON.stringify({ name })
-    },
-    "Habit creation failed"
-  );
+  return request("/habits", { method: "POST", body: JSON.stringify({ name }) }, "Habit creation failed");
 }
 
 export function checkInHabit(habitId) {
-  return request(
-    `/habits/${habitId}/check-in`,
-    {
-      method: "POST"
-    },
-    "Habit check-in failed"
-  );
+  return request(`/habits/${habitId}/check-in`, { method: "POST" }, "Habit check-in failed");
 }
 
 export function addMeeting(payload) {
-  return request(
-    "/meetings",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    "Meeting creation failed"
-  );
+  return request("/meetings", { method: "POST", body: JSON.stringify(payload) }, "Meeting creation failed");
 }
 
 export function addContact(payload) {
-  return request(
-    "/contacts",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    "Contact creation failed"
-  );
+  return request("/contacts", { method: "POST", body: JSON.stringify(payload) }, "Contact creation failed");
 }
 
 export function setMode(mode) {
-  return request(
-    "/mode",
-    {
-      method: "POST",
-      body: JSON.stringify({ mode })
-    },
-    "Mode update failed"
-  );
+  return request("/mode", { method: "POST", body: JSON.stringify({ mode }) }, "Mode update failed");
 }
 
 export function triggerEmergencyOverride(contactId, reason) {
-  return request(
-    "/emergency/override",
-    {
-      method: "POST",
-      body: JSON.stringify({ contactId, reason })
-    },
-    "Emergency override failed"
-  );
+  return request("/emergency/override", { method: "POST", body: JSON.stringify({ contactId, reason }) }, "Emergency override failed");
 }
 
 export function fetchInsights() {
   return request("/insights", {}, "Insights fetch failed");
-}
-
-export function fetchUpdateStatus() {
-  return request("/updates/status", {}, "Update status failed");
 }
 
 export function fetchSettings() {
@@ -267,14 +194,7 @@ export function fetchSettings() {
 }
 
 export function saveSettings(patch) {
-  return request(
-    "/settings",
-    {
-      method: "PATCH",
-      body: JSON.stringify(patch)
-    },
-    "Settings update failed"
-  );
+  return request("/settings", { method: "PATCH", body: JSON.stringify(patch) }, "Settings update failed");
 }
 
 export function fetchProfile() {
@@ -282,14 +202,7 @@ export function fetchProfile() {
 }
 
 export function saveProfile(patch) {
-  return request(
-    "/profile",
-    {
-      method: "PATCH",
-      body: JSON.stringify(patch)
-    },
-    "Profile update failed"
-  );
+  return request("/profile", { method: "PATCH", body: JSON.stringify(patch) }, "Profile update failed");
 }
 
 export function fetchReports(period = "weekly") {
@@ -301,21 +214,12 @@ export function fetchAuditLogs() {
 }
 
 export function fetchWeather(latitude, longitude) {
-  const params = latitude != null && longitude != null
-    ? `?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}`
-    : "";
+  const params = latitude != null && longitude != null ? `?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}` : "";
   return request(`/weather${params}`, {}, "Weather fetch failed");
 }
 
 export function translateText(payload) {
-  return request(
-    "/translate",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    "Translation failed"
-  );
+  return request("/translate", { method: "POST", body: JSON.stringify(payload) }, "Translation failed");
 }
 
 export function fetchSteps() {
@@ -323,47 +227,17 @@ export function fetchSteps() {
 }
 
 export function logSteps(payload) {
-  return request(
-    "/steps",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    "Step logging failed"
-  );
+  return request("/steps", { method: "POST", body: JSON.stringify(payload) }, "Step logging failed");
 }
 
 export function logSmartSteps(payload) {
-  return request(
-    "/steps/smart",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    },
-    "Smart step logging failed"
-  );
+  return request("/steps/smart", { method: "POST", body: JSON.stringify(payload) }, "Smart step logging failed");
 }
 
 export function authorizeIntegration(platform, permissions) {
-  return request(
-    `/integrations/${platform}/authorize`,
-    {
-      method: "POST",
-      body: JSON.stringify({ permissions })
-    },
-    "Integration authorization failed"
-  );
+  return request(`/integrations/${platform}/authorize`, { method: "POST", body: JSON.stringify({ permissions }) }, "Integration authorization failed");
 }
 
 export function chatWithAssistant(message) {
-  return request(
-    "/assistant/chat",
-    {
-      method: "POST",
-      body: JSON.stringify({ message })
-    },
-    "Assistant request failed"
-  );
+  return request("/assistant/chat", { method: "POST", body: JSON.stringify({ message }) }, "Assistant request failed");
 }
-
-

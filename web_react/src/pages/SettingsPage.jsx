@@ -2,14 +2,14 @@
 
 const socialScopes = ["read_messages", "send_messages", "read_status"];
 
-function SegmentedToggle({ label, description, value, onChange }) {
+function SegmentedToggle({ label, description, value, onChange, disabled = false }) {
   return (
     <div className="setting-field">
       <span>{label}</span>
       <small>{description}</small>
       <div className="suggestion-row">
-        <button type="button" className={value ? "active" : ""} onClick={() => onChange(true)}>On</button>
-        <button type="button" className={!value ? "active" : ""} onClick={() => onChange(false)}>Off</button>
+        <button type="button" className={value ? "active" : ""} onClick={() => onChange(true)} disabled={disabled}>On</button>
+        <button type="button" className={!value ? "active" : ""} onClick={() => onChange(false)} disabled={disabled}>Off</button>
       </div>
     </div>
   );
@@ -27,6 +27,7 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
   const [identity, setIdentity] = useState(profile || {});
   const [deviceInfo, setDeviceInfo] = useState({});
   const [permissionState, setPermissionState] = useState({});
+  const [saveStatus, setSaveStatus] = useState("");
 
   useEffect(() => {
     if (!settings || !profile) return;
@@ -85,14 +86,18 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
   }, []);
 
   if (!workspace || !settings || !profile) {
-    return <section className="page-grid"><div className="panel loading-panel">Loading settings...</div>      <article className="panel support-footer">
-        <div>
-          <strong>Support</strong>
-          <small>Need help with ZyroAi setup, updates, or device issues?</small>
-        </div>
-        <a className="cta-link" href="mailto:berrykarasu@gmail.com?subject=ZyroAi%20Support">Email Support</a>
-      </article>
-    </section>;
+    return (
+      <section className="page-grid">
+        <div className="panel loading-panel">Loading settings...</div>
+        <article className="panel support-footer">
+          <div>
+            <strong>Support</strong>
+            <small>Need help with ZyroAi setup, updates, or device issues?</small>
+          </div>
+          <a className="cta-link" href="mailto:berrykarasu@gmail.com?subject=ZyroAi%20Support">Email Support</a>
+        </article>
+      </section>
+    );
   }
 
   async function saveProfileSettings() {
@@ -105,10 +110,18 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
       city: identity.city || "",
       daily_step_goal: Number(identity.daily_step_goal || 8000)
     });
+    setSaveStatus("Profile saved.");
   }
 
   async function savePreferenceSettings() {
     await actions.saveSettings({ appearance, assistant, automation, data, permissions, integrations });
+    setSaveStatus("Settings synced.");
+  }
+
+  async function persistSection(section, nextValue, setter) {
+    setter(nextValue);
+    await actions.saveSettings({ [section]: nextValue });
+    setSaveStatus(`${section} updated.`);
   }
 
   async function requestPermission(key) {
@@ -117,8 +130,10 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
         const response = await Notification.requestPermission();
         const enabled = response === "granted";
         setPermissionState((current) => ({ ...current, notifications: response }));
-        setPermissions((current) => ({ ...current, notifications: enabled }));
+        const nextPermissions = { ...permissions, notifications: enabled };
+        setPermissions(nextPermissions);
         await actions.saveSettings({ permissions: { notifications: enabled } });
+        setSaveStatus("Notification permission updated.");
         return;
       }
 
@@ -127,8 +142,10 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
           navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 12000 });
         });
         setPermissionState((current) => ({ ...current, location: "granted" }));
-        setPermissions((current) => ({ ...current, location: true }));
+        const nextPermissions = { ...permissions, location: true };
+        setPermissions(nextPermissions);
         await actions.saveSettings({ permissions: { location: true } });
+        setSaveStatus("Location permission updated.");
         return;
       }
 
@@ -136,38 +153,53 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach((track) => track.stop());
         setPermissionState((current) => ({ ...current, microphone: "granted" }));
-        setPermissions((current) => ({ ...current, microphone: true }));
+        const nextPermissions = { ...permissions, microphone: true };
+        setPermissions(nextPermissions);
         await actions.saveSettings({ permissions: { microphone: true } });
+        setSaveStatus("Microphone permission updated.");
         return;
       }
 
       if (key === "activity") {
         setPermissionState((current) => ({ ...current, activity: "enabled" }));
-        setPermissions((current) => ({ ...current, activity: true }));
+        const nextPermissions = { ...permissions, activity: true };
+        setPermissions(nextPermissions);
         await actions.saveSettings({ permissions: { activity: true } });
+        setSaveStatus("Activity permission updated.");
       }
     } catch {
       setPermissionState((current) => ({ ...current, [key]: "denied" }));
-      setPermissions((current) => ({ ...current, [key]: false }));
+      const nextPermissions = { ...permissions, [key]: false };
+      setPermissions(nextPermissions);
       await actions.saveSettings({ permissions: { [key]: false } });
+      setSaveStatus(`${key} permission denied.`);
     }
+  }
+
+  async function disablePermission(key) {
+    const nextPermissions = { ...permissions, [key]: false };
+    setPermissions(nextPermissions);
+    await actions.saveSettings({ permissions: { [key]: false } });
+    setSaveStatus(`${key} permission disabled.`);
   }
 
   async function authorizePlatform(platform) {
     const confirmed = window.confirm(`Authorize ${platform} for ${socialScopes.join(", ")} access inside ZyroAi? Official platform approval is still required for true live messaging.`);
     if (!confirmed) return;
     await actions.authorizeIntegration(platform, socialScopes);
-    setIntegrations((current) => ({
-      ...current,
+    const nextIntegrations = {
+      ...integrations,
       [platform]: {
-        ...(current[platform] || {}),
+        ...(integrations[platform] || {}),
         connected: true,
         status: "authorized",
         mode: "consent-granted",
         permissions: socialScopes,
         last_synced_at: new Date().toISOString()
       }
-    }));
+    };
+    setIntegrations(nextIntegrations);
+    setSaveStatus(`${platform} authorization saved.`);
   }
 
   return (
@@ -221,12 +253,12 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
           <span>Call handling, reports, movement</span>
         </div>
         <div className="settings-grid">
-          <SegmentedToggle label="DND mode" description="AI will shield calls while you are busy." value={Boolean(automation.dndMode)} onChange={(value) => setAutomation({ ...automation, dndMode: value })} />
-          <SegmentedToggle label="Call auto-reply" description="Respond with the busy message automatically." value={Boolean(automation.callAutoReply)} onChange={(value) => setAutomation({ ...automation, callAutoReply: value })} />
-          <SegmentedToggle label="Smart step tracking" description="Auto-add walking steps and ignore vehicle travel." value={Boolean(automation.autoStepTracking)} onChange={(value) => setAutomation({ ...automation, autoStepTracking: value })} />
-          <SegmentedToggle label="Weekly reports" description="Generate AI review summaries automatically." value={Boolean(assistant.weeklyReports)} onChange={(value) => setAssistant({ ...assistant, weeklyReports: value })} />
-          <SegmentedToggle label="Monthly reports" description="Keep monthly productivity summaries ready." value={Boolean(assistant.monthlyReports)} onChange={(value) => setAssistant({ ...assistant, monthlyReports: value })} />
-          <SegmentedToggle label="Yearly reports" description="Track long-term performance trends." value={Boolean(assistant.yearlyReports)} onChange={(value) => setAssistant({ ...assistant, yearlyReports: value })} />
+          <SegmentedToggle label="DND mode" description="AI will shield calls while you are busy." value={Boolean(automation.dndMode)} onChange={(value) => persistSection("automation", { ...automation, dndMode: value }, setAutomation)} disabled={busyKey === "save-settings"} />
+          <SegmentedToggle label="Call auto-reply" description="Respond with the busy message automatically." value={Boolean(automation.callAutoReply)} onChange={(value) => persistSection("automation", { ...automation, callAutoReply: value }, setAutomation)} disabled={busyKey === "save-settings"} />
+          <SegmentedToggle label="Smart step tracking" description="Auto-add walking steps and ignore vehicle travel." value={Boolean(automation.autoStepTracking)} onChange={(value) => persistSection("automation", { ...automation, autoStepTracking: value }, setAutomation)} disabled={busyKey === "save-settings"} />
+          <SegmentedToggle label="Weekly reports" description="Generate AI review summaries automatically." value={Boolean(assistant.weeklyReports)} onChange={(value) => persistSection("assistant", { ...assistant, weeklyReports: value }, setAssistant)} disabled={busyKey === "save-settings"} />
+          <SegmentedToggle label="Monthly reports" description="Keep monthly productivity summaries ready." value={Boolean(assistant.monthlyReports)} onChange={(value) => persistSection("assistant", { ...assistant, monthlyReports: value }, setAssistant)} disabled={busyKey === "save-settings"} />
+          <SegmentedToggle label="Yearly reports" description="Track long-term performance trends." value={Boolean(assistant.yearlyReports)} onChange={(value) => persistSection("assistant", { ...assistant, yearlyReports: value }, setAssistant)} disabled={busyKey === "save-settings"} />
         </div>
       </article>
 
@@ -251,7 +283,7 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
               </div>
               <div className="suggestion-row">
                 <button type="button" onClick={() => requestPermission(key)} disabled={busyKey === "save-settings"}>Authorize</button>
-                <button type="button" className={!permissions[key] ? "active" : ""} onClick={() => setPermissions({ ...permissions, [key]: false })}>Disable</button>
+                <button type="button" className={!permissions[key] ? "active" : ""} onClick={() => disablePermission(key)} disabled={busyKey === "save-settings"}>Disable</button>
               </div>
             </div>
           ))}
@@ -325,7 +357,7 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
             </div>
           ))}
         </div>
-        <button type="button" onClick={savePreferenceSettings} disabled={busyKey === "save-settings"}>Apply Settings</button>
+        <button type="button" onClick={savePreferenceSettings} disabled={busyKey === "save-settings"}>Apply Visual and Data Settings</button>
       </article>
 
       <article className="panel">
@@ -342,16 +374,14 @@ export default function SettingsPage({ workspace, actions, busyKey }) {
           ))}
         </div>
       </article>
-          <article className="panel support-footer">
+
+      <article className="panel support-footer">
         <div>
           <strong>Support</strong>
-          <small>Need help with ZyroAi setup, updates, or device issues?</small>
+          <small>{saveStatus || "Need help with ZyroAi setup, updates, or device issues?"}</small>
         </div>
         <a className="cta-link" href="mailto:berrykarasu@gmail.com?subject=ZyroAi%20Support">Email Support</a>
       </article>
     </section>
   );
 }
-
-
-
