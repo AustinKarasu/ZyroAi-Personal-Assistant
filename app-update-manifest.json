@@ -1,13 +1,13 @@
 {
   "appName": "ZyroAi",
   "currentVersion": "1.0.0",
-  "latestVersion": "1.1.1",
+  "latestVersion": "1.1.2",
   "channel": "stable",
   "mandatory": false,
-  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases",
+  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/tag/v1.1.2",
   "releaseNotes": [
-    "Premium command center redesign",
-    "Smart motion tracking and drawer navigation",
-    "OpenRouter-ready assistant integration, cache-safe update popup, and support tools"
+    "Verified Supabase cloud workspace persistence over HTTPS",
+    "Device-scoped workspace data now survives beyond local fallback mode",
+    "Release packaging refreshed for Android distribution"
   ]
 }

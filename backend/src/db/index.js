@@ -11,6 +11,11 @@ const FALLBACK_FILE = "chief.db.json";
 const MAX_NOTIFICATIONS = 32;
 const MAX_AUDIT_LOGS = 120;
 const MAX_REPORT_SNAPSHOTS = 24;
+const CLOUD_BUCKET = process.env.SUPABASE_WORKSPACE_BUCKET || "zyroai-workspaces";
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
+const POSTGRES_READY = Boolean(process.env.DATABASE_URL);
+const STORAGE_READY = Boolean(SUPABASE_URL && SUPABASE_SECRET_KEY);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -18,7 +23,9 @@ const pool = new Pool({
 });
 
 let initialized = false;
-let fallbackEnabled = !process.env.DATABASE_URL;
+let storageMode = "local-fallback";
+let cloudBucketEnsured = false;
+let fallbackMigratedToCloud = false;
 
 const defaultProfile = () => ({
   name: "ZyroAi User",
@@ -40,7 +47,7 @@ const defaultSettings = () => ({
     reducedMotion: false
   },
   data: {
-    storageMode: "supabase-postgres",
+    storageMode: "cloud-managed",
     realtimeSync: true,
     analyticsOptIn: false,
     offlineReady: true,
@@ -103,6 +110,104 @@ const readFallbackStore = () => {
 
 const writeFallbackStore = (store) => {
   writeFileSync(FALLBACK_FILE, JSON.stringify(store, null, 2), "utf8");
+};
+
+const cloudObjectPath = (deviceId) => `workspaces/${encodeURIComponent(deviceId)}.json`;
+
+const supabaseHeaders = (extra = {}) => ({
+  apikey: SUPABASE_SECRET_KEY,
+  Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+  "User-Agent": "zyroai-backend/1.1.1",
+  ...extra
+});
+
+const fetchJson = async (url, options = {}) => {
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  return { response, data };
+};
+
+const ensureCloudBucket = async () => {
+  if (!STORAGE_READY || cloudBucketEnsured) return;
+  const list = await fetchJson(`${SUPABASE_URL}/storage/v1/bucket`, {
+    headers: supabaseHeaders()
+  });
+
+  if (!list.response.ok) {
+    throw new Error(typeof list.data === "string" ? list.data : list.data?.message || "Unable to list Supabase buckets");
+  }
+
+  const exists = Array.isArray(list.data) && list.data.some((bucket) => bucket?.name === CLOUD_BUCKET || bucket?.id === CLOUD_BUCKET);
+  if (!exists) {
+    const created = await fetchJson(`${SUPABASE_URL}/storage/v1/bucket`, {
+      method: "POST",
+      headers: supabaseHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ id: CLOUD_BUCKET, name: CLOUD_BUCKET, public: false })
+    });
+
+    if (!created.response.ok) {
+      throw new Error(typeof created.data === "string" ? created.data : created.data?.message || "Unable to create Supabase bucket");
+    }
+  }
+
+  cloudBucketEnsured = true;
+};
+
+const loadCloudWorkspaceRow = async (deviceId) => {
+  await ensureCloudBucket();
+  const path = cloudObjectPath(deviceId);
+  const { response, data } = await fetchJson(`${SUPABASE_URL}/storage/v1/object/${CLOUD_BUCKET}/${path}`, {
+    headers: supabaseHeaders()
+  });
+
+  const missingObject = response.status === 404 || data?.message === "Object not found" || data === "Object not found";
+  if (missingObject) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(typeof data === "string" ? data : data?.message || `Supabase cloud load failed with ${response.status}`);
+  }
+
+  return normalizeWorkspace(data);
+};
+
+const saveCloudWorkspaceRow = async (deviceId, workspace) => {
+  await ensureCloudBucket();
+  const normalized = normalizeWorkspace(workspace);
+  const path = cloudObjectPath(deviceId);
+  const { response, data } = await fetchJson(`${SUPABASE_URL}/storage/v1/object/${CLOUD_BUCKET}/${path}`, {
+    method: "POST",
+    headers: supabaseHeaders({
+      "Content-Type": "application/json",
+      "x-upsert": "true"
+    }),
+    body: JSON.stringify(normalized)
+  });
+
+  if (!response.ok) {
+    throw new Error(typeof data === "string" ? data : data?.message || `Supabase cloud save failed with ${response.status}`);
+  }
+};
+
+const maybeMigrateFallbackToCloud = async () => {
+  if (!STORAGE_READY || fallbackMigratedToCloud || !existsSync(FALLBACK_FILE)) return;
+  const fallbackStore = readFallbackStore();
+  for (const [deviceId, workspace] of Object.entries(fallbackStore)) {
+    const existing = await loadCloudWorkspaceRow(deviceId);
+    if (!existing) {
+      await saveCloudWorkspaceRow(deviceId, workspace);
+    }
+  }
+  fallbackMigratedToCloud = true;
 };
 
 const createEmptyWorkspace = () => ({
@@ -192,31 +297,48 @@ const emitChange = (deviceId, type) => {
 
 const ensureInit = async () => {
   if (initialized) return;
-  if (fallbackEnabled) {
-    initialized = true;
-    return;
+  if (POSTGRES_READY) {
+    try {
+      await pool.query(`
+        create table if not exists chief_workspaces (
+          device_id text primary key,
+          workspace jsonb not null,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now()
+        );
+      `);
+      storageMode = "supabase-postgres";
+      initialized = true;
+      return;
+    } catch (error) {
+      console.warn(`Chief Postgres storage unavailable, trying cloud storage: ${error.code || error.message}`);
+    }
   }
-  try {
-    await pool.query(`
-      create table if not exists chief_workspaces (
-        device_id text primary key,
-        workspace jsonb not null,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      );
-    `);
-  } catch (error) {
-    fallbackEnabled = true;
-    console.warn(`Chief storage fallback enabled: ${error.code || error.message}`);
+
+  if (STORAGE_READY) {
+    try {
+      await ensureCloudBucket();
+      await maybeMigrateFallbackToCloud();
+      storageMode = "supabase-cloud";
+      initialized = true;
+      return;
+    } catch (error) {
+      console.warn(`Chief cloud storage unavailable, using local fallback: ${error.code || error.message}`);
+    }
   }
+
+  storageMode = "local-fallback";
   initialized = true;
 };
 
 const loadWorkspaceRow = async (deviceId) => {
   await ensureInit();
-  if (fallbackEnabled) {
+  if (storageMode === "local-fallback") {
     const store = readFallbackStore();
     return store[deviceId] ? normalizeWorkspace(store[deviceId]) : null;
+  }
+  if (storageMode === "supabase-cloud") {
+    return loadCloudWorkspaceRow(deviceId);
   }
   const { rows } = await pool.query("select workspace from chief_workspaces where device_id = $1", [deviceId]);
   return rows[0]?.workspace ? normalizeWorkspace(rows[0].workspace) : null;
@@ -225,10 +347,14 @@ const loadWorkspaceRow = async (deviceId) => {
 const saveWorkspaceRow = async (deviceId, workspace) => {
   await ensureInit();
   const normalized = normalizeWorkspace(workspace);
-  if (fallbackEnabled) {
+  if (storageMode === "local-fallback") {
     const store = readFallbackStore();
     store[deviceId] = normalized;
     writeFallbackStore(store);
+    return;
+  }
+  if (storageMode === "supabase-cloud") {
+    await saveCloudWorkspaceRow(deviceId, normalized);
     return;
   }
   await pool.query(
@@ -729,8 +855,4 @@ export const listReportSnapshots = async (deviceId) => {
 };
 
 export const getWorkspaceSnapshot = async (deviceId) => loadWorkspace(deviceId);
-export const getStorageMode = () => (fallbackEnabled ? "local-fallback" : "supabase-postgres");
-
-
-
-
+export const getStorageMode = () => storageMode;

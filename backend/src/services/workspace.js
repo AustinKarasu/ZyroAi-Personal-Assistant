@@ -86,7 +86,7 @@ export const buildWorkspace = async (deviceId) => {
       executiveScore: Math.max(62, Math.min(98, 79 + completedHabits * 2 - urgentCalls + vipContacts + Math.round(steps.progress / 20))),
       liveMode: modeState.mode,
       deepWorkUntil: modeState.deep_work_until,
-      syncStatus: getStorageMode() === "supabase-postgres" ? "Supabase Postgres live" : "Local fallback active",
+      syncStatus: getStorageMode() === "supabase-postgres" ? "Supabase Postgres live" : getStorageMode() === "supabase-cloud" ? "Supabase cloud sync live" : "Local fallback active",
       automationStatus: settings.automation.dndMode ? "DND shielding active" : urgentCalls > 0 ? "Escalations waiting" : "Automation stable",
       securityStatus: "Encrypted personal memory enabled"
     },
@@ -155,7 +155,7 @@ export const buildWorkspace = async (deviceId) => {
       "Weekly monthly yearly reports",
       "Audit logs",
       "Profile and permissions settings",
-      "Supabase Postgres storage",
+      "Supabase cloud persistence",
       "AI workspace assistant",
       "DND call handling",
       "Appearance and data settings"
