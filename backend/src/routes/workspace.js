@@ -35,10 +35,11 @@ import { buildWorkspace } from "../services/workspace.js";
 const router = Router();
 const validReportPeriods = new Set(["weekly", "monthly", "yearly"]);
 const validPlatforms = new Set(["whatsapp", "instagram", "facebook", "messenger", "x"]);
+const clientAppVersion = (req) => String(req.headers["x-app-version"] || "").trim();
 
 router.get("/workspace", async (req, res) => {
   await ensureUser(req.deviceId);
-  res.json(await buildWorkspace(req.deviceId));
+  res.json(await buildWorkspace(req.deviceId, clientAppVersion(req)));
 });
 
 router.get("/stream", async (req, res) => {
@@ -49,7 +50,7 @@ router.get("/stream", async (req, res) => {
   res.flushHeaders?.();
 
   const sendWorkspace = async () => {
-    const workspace = await buildWorkspace(req.deviceId);
+    const workspace = await buildWorkspace(req.deviceId, clientAppVersion(req));
     res.write(`data: ${JSON.stringify(workspace)}\n\n`);
   };
 

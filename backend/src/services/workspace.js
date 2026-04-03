@@ -27,7 +27,7 @@ const categorizeTasks = (tasks) => ({
   done: tasks.filter((task) => task.status === "done")
 });
 
-export const buildWorkspace = async (deviceId) => {
+export const buildWorkspace = async (deviceId, clientVersion = "") => {
   const [
     tasks,
     meetings,
@@ -55,7 +55,7 @@ export const buildWorkspace = async (deviceId) => {
     listNotifications(deviceId).then((items) => items.slice(0, 8)),
     listMemories(deviceId).then((items) => items.slice(0, 6)),
     listDecisions(deviceId).then((items) => items.slice(0, 5)),
-    loadUpdateManifest(),
+    loadUpdateManifest(clientVersion),
     getModeState(deviceId),
     getSettings(deviceId),
     getProfile(deviceId),

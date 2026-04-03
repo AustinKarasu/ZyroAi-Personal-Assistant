@@ -4,13 +4,14 @@ import { validateBody, schemas } from "../middleware/validation.js";
 import { loadUpdateManifest } from "../services/updates.js";
 
 const router = Router();
+const clientAppVersion = (req) => String(req.headers["x-app-version"] || "").trim();
 
 router.get("/insights", async (req, res) => {
   await ensureUser(req.deviceId);
   const tasks = await listTasks(req.deviceId);
   const logs = await listCallLogs(req.deviceId);
   const memories = await listMemories(req.deviceId);
-  const updateCenter = await loadUpdateManifest();
+  const updateCenter = await loadUpdateManifest(clientAppVersion(req));
 
   const openTasks = tasks.filter((task) => task.status !== "done").length;
   const highPriority = tasks.filter((task) => task.priority_score >= 70).length;
@@ -34,8 +35,8 @@ router.get("/insights", async (req, res) => {
   });
 });
 
-router.get("/updates/status", async (_req, res) => {
-  res.json(await loadUpdateManifest());
+router.get("/updates/status", async (req, res) => {
+  res.json(await loadUpdateManifest(clientAppVersion(req)));
 });
 
 router.post("/messages/auto-reply", validateBody(schemas.autoReply), async (req, res) => {

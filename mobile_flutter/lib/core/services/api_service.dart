@@ -5,6 +5,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/task_item.dart';
@@ -32,10 +33,14 @@ class ApiService {
     return random;
   }
 
-  Future<Map<String, String>> _headers() async => {
-        'Content-Type': 'application/json',
-        'x-device-id': await _deviceId(),
-      };
+  Future<Map<String, String>> _headers() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    return {
+      'Content-Type': 'application/json',
+      'x-device-id': await _deviceId(),
+      'x-app-version': packageInfo.version,
+    };
+  }
 
   Future<String> _currentBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();

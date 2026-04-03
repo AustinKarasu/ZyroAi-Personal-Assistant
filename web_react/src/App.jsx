@@ -33,7 +33,8 @@ import {
   subscribeToWorkspace,
   translateText as translateApi,
   triggerEmergencyOverride,
-  updateTaskStatus
+  updateTaskStatus,
+  appVersion
 } from "./api/client";
 import { getDirection, t } from "./i18n";
 import "./styles/app.css";
@@ -138,7 +139,7 @@ export default function App() {
 
 
   useEffect(() => {
-    const currentVersion = workspace?.updateCenter?.currentVersion;
+    const currentVersion = appVersion || workspace?.updateCenter?.currentVersion;
     if (!currentVersion) return;
     const installedVersion = localStorage.getItem(installedVersionKey);
     if (installedVersion && installedVersion !== currentVersion) {
@@ -153,11 +154,16 @@ export default function App() {
 
   useEffect(() => {
     const latestVersion = workspace?.updateCenter?.latestVersion;
-    if (!workspace?.updateCenter?.updateAvailable || !latestVersion) return;
+    const currentVersion = appVersion || workspace?.updateCenter?.currentVersion;
+    if (!workspace?.updateCenter?.updateAvailable || !latestVersion || !currentVersion) return;
+    if (latestVersion === currentVersion) {
+      setShowUpdateModal(false);
+      return;
+    }
     if (!localStorage.getItem(updateDismissKey(latestVersion))) {
       setShowUpdateModal(true);
     }
-  }, [workspace?.updateCenter?.latestVersion, workspace?.updateCenter?.updateAvailable]);
+  }, [workspace?.updateCenter?.latestVersion, workspace?.updateCenter?.updateAvailable, workspace?.updateCenter?.currentVersion]);
 
   const localizedTabs = useMemo(
     () => tabs.map((key) => ({ key, label: t(workspace?.profile?.language || "en", key) })),

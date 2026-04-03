@@ -39,13 +39,15 @@ const readLocalManifest = () => {
   return { ...defaultManifest, ...JSON.parse(readFileSync(MANIFEST_FILE, "utf8")) };
 };
 
-export const loadUpdateManifest = async () => {
+export const loadUpdateManifest = async (clientVersion) => {
   const configuredUrl = process.env.GITHUB_UPDATE_MANIFEST_URL;
   if (!configuredUrl) {
     const local = readLocalManifest();
+    const currentVersion = clientVersion || local.currentVersion;
     return {
       ...local,
-      updateAvailable: compareVersion(local.latestVersion, local.currentVersion) > 0
+      currentVersion,
+      updateAvailable: compareVersion(local.latestVersion, currentVersion) > 0
     };
   }
 
@@ -56,16 +58,20 @@ export const loadUpdateManifest = async () => {
     }
     const remote = await response.json();
     const merged = { ...defaultManifest, ...remote, source: "remote-manifest" };
+    const currentVersion = clientVersion || merged.currentVersion;
     return {
       ...merged,
-      updateAvailable: compareVersion(merged.latestVersion, merged.currentVersion) > 0
+      currentVersion,
+      updateAvailable: compareVersion(merged.latestVersion, currentVersion) > 0
     };
   } catch {
     const local = readLocalManifest();
+    const currentVersion = clientVersion || local.currentVersion;
     return {
       ...local,
+      currentVersion,
       source: "remote-manifest-fallback",
-      updateAvailable: compareVersion(local.latestVersion, local.currentVersion) > 0
+      updateAvailable: compareVersion(local.latestVersion, currentVersion) > 0
     };
   }
 };

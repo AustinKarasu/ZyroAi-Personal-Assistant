@@ -2,6 +2,7 @@
 const apiHost = browserHost === "0.0.0.0" ? "127.0.0.1" : browserHost;
 const API_BASE = `${window.location.protocol}//${apiHost}:8080/api`;
 const DEVICE_KEY = "chief_device_id";
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.2";
 const WORKSPACE_CACHE_KEY = "zyroai_workspace_cache";
 const storedDevice = localStorage.getItem(DEVICE_KEY);
 const DEVICE_ID = storedDevice || `web-${crypto.randomUUID()}`;
@@ -12,7 +13,8 @@ if (!storedDevice) {
 
 const headers = {
   "Content-Type": "application/json",
-  "x-device-id": DEVICE_ID
+  "x-device-id": DEVICE_ID,
+  "x-app-version": APP_VERSION
 };
 
 async function parse(response, errorText) {
@@ -241,3 +243,5 @@ export function authorizeIntegration(platform, permissions) {
 export function chatWithAssistant(message) {
   return request("/assistant/chat", { method: "POST", body: JSON.stringify({ message }) }, "Assistant request failed");
 }
+
+export const appVersion = APP_VERSION;
