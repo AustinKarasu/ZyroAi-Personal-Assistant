@@ -476,10 +476,12 @@ const mutateWorkspace = async (deviceId, type, mutator, detail) => {
 };
 
 export const ensureUser = async (deviceId) => {
-  const workspace = await withTimeout(loadWorkspaceRow(deviceId), 3500, null);
+  const workspace = await withTimeout(loadWorkspaceRow(deviceId), 1500, null);
   if (workspace) return workspace;
   const fresh = createEmptyWorkspace();
-  await withTimeout(saveWorkspaceRow(deviceId, fresh), 3500, null);
+  saveWorkspaceRow(deviceId, fresh).catch((error) => {
+    console.warn(`Background save failed for ${deviceId}: ${error.message}`);
+  });
   emitChange(deviceId, "user_seeded");
   return fresh;
 };
