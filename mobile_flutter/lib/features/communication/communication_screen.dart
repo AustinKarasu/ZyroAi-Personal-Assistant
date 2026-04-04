@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../core/services/api_service.dart';
 
@@ -15,6 +15,8 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   final _callerCtrl = TextEditingController();
   final _transcriptCtrl = TextEditingController();
   String _autoReply = '';
+  String _incomingSummary = '';
+  bool _submitting = false;
 
   @override
   void initState() {
@@ -22,12 +24,31 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     _logsFuture = widget.api.fetchCallLogs();
   }
 
+  Future<void> _reload() async {
+    setState(() => _logsFuture = widget.api.fetchCallLogs());
+  }
+
   Future<void> _submitLog() async {
     if (_callerCtrl.text.isEmpty || _transcriptCtrl.text.isEmpty) return;
+    setState(() => _submitting = true);
     await widget.api.submitCallLog(_callerCtrl.text.trim(), _transcriptCtrl.text.trim());
     _callerCtrl.clear();
     _transcriptCtrl.clear();
-    setState(() => _logsFuture = widget.api.fetchCallLogs());
+    setState(() => _submitting = false);
+    await _reload();
+  }
+
+  Future<void> _simulateIncomingCall() async {
+    if (_callerCtrl.text.isEmpty || _transcriptCtrl.text.isEmpty) return;
+    setState(() => _submitting = true);
+    final response = await widget.api.handleIncomingCall(_callerCtrl.text.trim(), _transcriptCtrl.text.trim());
+    setState(() {
+      _incomingSummary = response['agentReply']?.toString().isNotEmpty == true
+          ? response['agentReply'].toString()
+          : response['summary']?.toString() ?? 'Incoming call processed.';
+      _submitting = false;
+    });
+    await _reload();
   }
 
   Future<void> _genReply() async {
@@ -40,34 +61,61 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(controller: _callerCtrl, decoration: const InputDecoration(labelText: 'Caller Name')),
+          Text('Communications', style: Theme.of(context).textTheme.headlineMedium),
+          const SizedBox(height: 12),
+          TextField(controller: _callerCtrl, decoration: const InputDecoration(labelText: 'Caller name or number')),
           const SizedBox(height: 8),
-          TextField(controller: _transcriptCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Call transcript')),
-          const SizedBox(height: 8),
-          Row(children: [
-            FilledButton(onPressed: _submitLog, child: const Text('Analyze')),
-            const SizedBox(width: 8),
-            OutlinedButton(onPressed: _genReply, child: const Text('Auto-reply')),
-          ]),
-          if (_autoReply.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_autoReply)),
+          TextField(controller: _transcriptCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Transcript or caller message')),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton(onPressed: _submitting ? null : _submitLog, child: Text(_submitting ? 'Working...' : 'Analyze Call')),
+              OutlinedButton(onPressed: _submitting ? null : _simulateIncomingCall, child: const Text('Simulate Incoming Call')),
+              OutlinedButton(onPressed: _genReply, child: const Text('Generate Auto Reply')),
+            ],
+          ),
+          if (_autoReply.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Card(child: Padding(padding: const EdgeInsets.all(12), child: Text(_autoReply))),
+          ],
+          if (_incomingSummary.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Card(child: Padding(padding: const EdgeInsets.all(12), child: Text(_incomingSummary))),
+          ],
           const SizedBox(height: 12),
           Expanded(
             child: FutureBuilder<List<Map<String, dynamic>>>(
               future: _logsFuture,
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                final logs = snapshot.data!;
-                if (logs.isEmpty) return const Center(child: Text('No call logs yet'));
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Communication feed failed: ${snapshot.error}'));
+                }
+                final logs = snapshot.data ?? [];
+                if (logs.isEmpty) return const Center(child: Text('No call activity yet.'));
                 return ListView.builder(
                   itemCount: logs.length,
                   itemBuilder: (context, index) {
                     final log = logs[index];
+                    final handledByDnd = log['handled_by_dnd'] == true;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
                         title: Text(log['caller'].toString()),
-                        subtitle: Text('Sentiment: ${log['sentiment']} | Urgency: ${log['urgency']}'),
+                        subtitle: Text(
+                          handledByDnd
+                              ? 'DND handled this call. Urgency ${log['urgency']} | ${log['agent_reply'] ?? ''}'
+                              : 'Sentiment: ${log['sentiment']} | Urgency: ${log['urgency']}',
+                        ),
+                        trailing: Icon(
+                          handledByDnd ? Icons.phone_disabled_outlined : Icons.call_outlined,
+                        ),
                       ),
                     );
                   },

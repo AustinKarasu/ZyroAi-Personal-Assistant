@@ -1,11 +1,13 @@
-﻿import 'dart:io' show Platform;
+import 'dart:io' show Platform;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/api_service.dart';
 import '../../core/services/motion_tracking_service.dart';
+import '../../core/services/native_telecom_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.api});
@@ -22,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Map<String, dynamic> _settings = {};
   Map<String, dynamic> _profile = {};
   Map<String, String> _deviceInfo = {};
+  Map<String, dynamic> _callScreening = {'supported': false, 'roleHeld': false};
   final _nameCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
   final _goalCtrl = TextEditingController();
@@ -40,14 +43,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final profile = (profileRes['profile'] as Map).cast<String, dynamic>();
     final settings = (settingsRes['settings'] as Map).cast<String, dynamic>();
     final deviceInfo = await _loadDeviceInfo();
+    final callScreening = Platform.isAndroid
+        ? await NativeTelecomService.getCallScreeningStatus()
+        : <String, dynamic>{'supported': false, 'roleHeld': false};
+
     _nameCtrl.text = profile['name']?.toString() ?? '';
     _titleCtrl.text = profile['title']?.toString() ?? '';
     _goalCtrl.text = (profile['daily_step_goal'] ?? 8000).toString();
     _apiBaseUrlCtrl.text = apiBaseUrl;
+
     setState(() {
       _profile = profile;
       _settings = settings;
       _deviceInfo = deviceInfo;
+      _callScreening = callScreening;
       _loading = false;
     });
   }
@@ -85,6 +94,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'language': _profile['language'] ?? 'en',
     });
     await widget.api.saveSettings(_settings);
+    final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
+    if (Platform.isAndroid) {
+      await NativeTelecomService.syncCallAutomation(
+        dndMode: automation['dndMode'] == true,
+        callAutoReply: automation['callAutoReply'] != false,
+      );
+      _callScreening = await NativeTelecomService.getCallScreeningStatus();
+    }
     await MotionTrackingService.instance.refreshConfig();
     if (!mounted) return;
     setState(() => _saving = false);
@@ -94,6 +111,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _openSupport() async {
     final uri = Uri.parse('mailto:berrykarasu@gmail.com?subject=ZyroAi%20Support');
     await launchUrl(uri);
+  }
+
+  Future<void> _requestPermission(String key) async {
+    Permission permission;
+    switch (key) {
+      case 'location':
+        permission = Permission.locationWhenInUse;
+        break;
+      case 'activity':
+        permission = Permission.activityRecognition;
+        break;
+      case 'notifications':
+        permission = Permission.notification;
+        break;
+      default:
+        permission = Permission.microphone;
+    }
+
+    final status = await permission.request();
+    final granted = status.isGranted || status.isLimited;
+    setState(() {
+      final permissions = (_settings['permissions'] as Map?)?.cast<String, dynamic>() ?? {};
+      permissions[key] = granted;
+      _settings['permissions'] = permissions;
+    });
+  }
+
+  Future<void> _requestCallScreeningRole() async {
+    final granted = await NativeTelecomService.requestCallScreeningRole();
+    final status = await NativeTelecomService.getCallScreeningStatus();
+    if (!mounted) return;
+    setState(() => _callScreening = status);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          granted
+              ? 'ZyroAi can now screen incoming calls on this device.'
+              : 'Call-screening role was not granted.',
+        ),
+      ),
+    );
   }
 
   Widget _sectionTitle(String title, String subtitle) {
@@ -213,24 +271,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'DND mode',
                   subtitle: 'Answer incoming calls with the busy AI message.',
                   value: automation['dndMode'] == true,
-                  onChanged: (value) => setState(() => automation['dndMode'] = value),
+                  onChanged: (value) => setState(() {
+                    automation['dndMode'] = value;
+                    _settings['automation'] = automation;
+                  }),
                 ),
                 _toggleTile(
                   title: 'Call auto-reply',
                   subtitle: 'Send the DND call response automatically.',
                   value: automation['callAutoReply'] != false,
-                  onChanged: (value) => setState(() => automation['callAutoReply'] = value),
+                  onChanged: (value) => setState(() {
+                    automation['callAutoReply'] = value;
+                    _settings['automation'] = automation;
+                  }),
                 ),
                 _toggleTile(
                   title: 'Smart step tracking',
                   subtitle: 'Use native step sensor plus location speed filtering.',
                   value: automation['autoStepTracking'] == true,
-                  onChanged: (value) => setState(() => automation['autoStepTracking'] = value),
+                  onChanged: (value) => setState(() {
+                    automation['autoStepTracking'] = value;
+                    _settings['automation'] = automation;
+                  }),
                 ),
               ],
             ),
           ),
         ),
+        if (Platform.isAndroid) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionTitle('Call Screening', 'Native Android telecom role and DND screening'),
+                  Text(
+                    _callScreening['supported'] == true
+                        ? (_callScreening['roleHeld'] == true
+                            ? 'Native call-screening role is active.'
+                            : 'Native call-screening role is not granted yet.')
+                        : 'This Android version does not support the native screening role.',
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _callScreening['supported'] == true ? _requestCallScreeningRole : null,
+                    child: Text(_callScreening['roleHeld'] == true ? 'Role Active' : 'Enable Call Screening'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         Card(
           child: Padding(
@@ -238,30 +331,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _sectionTitle('Permissions', 'Use switch controls instead of checkboxes'),
+                _sectionTitle('Permissions', 'Use switch controls and request actual device permissions'),
                 _toggleTile(
                   title: 'Location permission',
                   subtitle: 'Allow weather refresh and live movement tracking.',
                   value: permissions['location'] == true,
-                  onChanged: (value) => setState(() => permissions['location'] = value),
+                  onChanged: (value) => value
+                      ? _requestPermission('location')
+                      : setState(() {
+                          permissions['location'] = false;
+                          _settings['permissions'] = permissions;
+                        }),
                 ),
                 _toggleTile(
                   title: 'Activity permission',
                   subtitle: 'Allow native step and movement tracking.',
                   value: permissions['activity'] == true,
-                  onChanged: (value) => setState(() => permissions['activity'] = value),
+                  onChanged: (value) => value
+                      ? _requestPermission('activity')
+                      : setState(() {
+                          permissions['activity'] = false;
+                          _settings['permissions'] = permissions;
+                        }),
                 ),
                 _toggleTile(
                   title: 'Notifications permission',
                   subtitle: 'Allow reminders, alerts, and DND updates.',
                   value: permissions['notifications'] == true,
-                  onChanged: (value) => setState(() => permissions['notifications'] = value),
+                  onChanged: (value) => value
+                      ? _requestPermission('notifications')
+                      : setState(() {
+                          permissions['notifications'] = false;
+                          _settings['permissions'] = permissions;
+                        }),
                 ),
                 _toggleTile(
                   title: 'Microphone permission',
                   subtitle: 'Allow speech-to-text translation and voice assistant features.',
                   value: permissions['microphone'] == true,
-                  onChanged: (value) => setState(() => permissions['microphone'] = value),
+                  onChanged: (value) => value
+                      ? _requestPermission('microphone')
+                      : setState(() {
+                          permissions['microphone'] = false;
+                          _settings['permissions'] = permissions;
+                        }),
                 ),
               ],
             ),
