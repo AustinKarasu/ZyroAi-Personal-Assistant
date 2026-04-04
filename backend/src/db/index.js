@@ -476,7 +476,13 @@ const mutateWorkspace = async (deviceId, type, mutator, detail) => {
 };
 
 export const ensureUser = async (deviceId) => {
-  const workspace = await withTimeout(loadWorkspaceRow(deviceId), 1500, null);
+  let workspace = null;
+  try {
+    workspace = await withTimeout(loadWorkspaceRow(deviceId), 1500, null);
+  } catch (error) {
+    console.warn(`Workspace load failed for ${deviceId}: ${error.message}`);
+    storageMode = "local-fallback";
+  }
   if (workspace) return workspace;
   const fresh = createEmptyWorkspace();
   saveWorkspaceRow(deviceId, fresh).catch((error) => {
