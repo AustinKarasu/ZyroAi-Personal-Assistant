@@ -4,7 +4,7 @@
     "latestVersion":  "1.1.11",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://raw.githubusercontent.com/AustinKarasu/ZyroAi-Personal-Assistant/v1.1.11/apk/ZyroAi-v1.1.11.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.11/ZyroAi-v1.1.11.apk",
     "releaseNotes":  [
                          "Added in-app Android update download and installer flow with no browser step",
                          "Improved release detection by checking the dedicated update status endpoint on launch and resume",
