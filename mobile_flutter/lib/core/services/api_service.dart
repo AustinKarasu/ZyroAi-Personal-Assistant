@@ -22,9 +22,10 @@ class ApiService {
   static const _fallbackAppVersion = '1.1.5';
 
   static String _defaultBaseUrl() {
-    if (kIsWeb) return 'http://127.0.0.1:8080';
-    if (Platform.isAndroid) return 'http://10.0.2.2:8080';
-    return 'http://127.0.0.1:8080';
+    const cloudBase = 'https://zyroai-backend.vercel.app';
+    if (kIsWeb) return cloudBase;
+    if (Platform.isAndroid) return cloudBase;
+    return cloudBase;
   }
 
   Future<String> _deviceId() async {

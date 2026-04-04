@@ -1,8 +1,12 @@
-﻿const browserHost = window.location.hostname || "127.0.0.1";
+﻿const DEFAULT_CLOUD_API_BASE = "https://zyroai-backend.vercel.app/api";
+const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+const browserHost = window.location.hostname || "127.0.0.1";
 const apiHost = browserHost === "0.0.0.0" ? "127.0.0.1" : browserHost;
-const API_BASE = `${window.location.protocol}//${apiHost}:8080/api`;
+const API_BASE = localHosts.has(browserHost)
+  ? `${window.location.protocol}//${apiHost}:8080/api`
+  : (import.meta.env.VITE_API_BASE || DEFAULT_CLOUD_API_BASE);
 const DEVICE_KEY = "chief_device_id";
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.2";
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.5";
 const WORKSPACE_CACHE_KEY = "zyroai_workspace_cache";
 const storedDevice = localStorage.getItem(DEVICE_KEY);
 const DEVICE_ID = storedDevice || `web-${crypto.randomUUID()}`;
