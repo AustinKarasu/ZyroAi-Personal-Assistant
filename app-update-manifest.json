@@ -1,14 +1,13 @@
 {
     "appName":  "ZyroAi",
-    "currentVersion":  "1.1.13",
-    "latestVersion":  "1.1.13",
+    "currentVersion":  "1.1.14",
+    "latestVersion":  "1.1.14",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.13/ZyroAi-v1.1.13.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.14/ZyroAi-v1.1.14.apk",
     "releaseNotes":  [
-                         "Fixed assistant conversation clear so the mobile app and backend now stay in sync",
-                         "Reworked communication CTAs with working snackbars, refresh behavior, and cleaner DND action feedback",
-                         "Added backend delete route coverage for assistant chat history and relaxed profile validation for safer autosave",
-                         "Verified smart step logging and manual step updates with release smoke tests"
+                         "Fixed Android startup crash risk from MainActivity receiver registration on newer Android versions",
+                         "Rebuilt the APK after native telecom startup hardening",
+                         "Kept the v1.1.13 CTA, assistant clear-history, and step-tracking fixes"
                      ]
 }

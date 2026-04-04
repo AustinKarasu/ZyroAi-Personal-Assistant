@@ -15,6 +15,7 @@ import android.os.Environment
 import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -28,6 +29,7 @@ class MainActivity : FlutterActivity() {
     private var pendingRoleResult: MethodChannel.Result? = null
     private var pendingInstallPath: String? = null
     private var pendingInstallMimeType: String = "application/vnd.android.package-archive"
+    private var downloadReceiverRegistered = false
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -132,11 +134,22 @@ class MainActivity : FlutterActivity() {
 
     override fun onStart() {
         super.onStart()
-        registerReceiver(downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        if (downloadReceiverRegistered) return
+        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.registerReceiver(this, downloadReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(downloadReceiver, filter)
+        }
+        downloadReceiverRegistered = true
     }
 
     override fun onStop() {
-        runCatching { unregisterReceiver(downloadReceiver) }
+        if (downloadReceiverRegistered) {
+            runCatching { unregisterReceiver(downloadReceiver) }
+            downloadReceiverRegistered = false
+        }
         super.onStop()
     }
 
