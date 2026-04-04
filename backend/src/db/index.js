@@ -124,7 +124,10 @@ const supabaseHeaders = (extra = {}) => ({
 });
 
 const fetchJson = async (url, options = {}) => {
-  const response = await fetch(url, options);
+  const response = await fetch(url, {
+    ...options,
+    signal: options.signal || AbortSignal.timeout(8000)
+  });
   const text = await response.text();
   let data = null;
   if (text) {
