@@ -20,7 +20,11 @@ const STORAGE_READY = Boolean(SUPABASE_URL && SUPABASE_SECRET_KEY);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+  max: Number(process.env.PG_POOL_MAX || 5),
+  idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 10000),
+  connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 4000),
+  query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 5000)
 });
 
 let initialized = false;
