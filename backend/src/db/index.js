@@ -7,6 +7,11 @@ import { Pool } from "pg";
 const dbEvents = new EventEmitter();
 const now = () => new Date().toISOString();
 const todayKey = (date = new Date()) => date.toISOString().slice(0, 10);
+const withTimeout = (promise, ms, fallbackValue = null) =>
+  Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(fallbackValue), ms))
+  ]);
 const FALLBACK_FILE = "chief.db.json";
 const MAX_NOTIFICATIONS = 32;
 const MAX_AUDIT_LOGS = 120;
@@ -465,16 +470,16 @@ const mutateWorkspace = async (deviceId, type, mutator, detail) => {
   const workspace = (await loadWorkspace(deviceId)) || createEmptyWorkspace();
   const result = await mutator(workspace);
   insertAuditLog(workspace, type, detail || actionLabels[type] || "Workspace action completed.");
-  await saveWorkspaceRow(deviceId, workspace);
+  await withTimeout(saveWorkspaceRow(deviceId, workspace), 3500, null);
   emitChange(deviceId, type);
   return result;
 };
 
 export const ensureUser = async (deviceId) => {
-  const workspace = await loadWorkspaceRow(deviceId);
+  const workspace = await withTimeout(loadWorkspaceRow(deviceId), 3500, null);
   if (workspace) return workspace;
   const fresh = createEmptyWorkspace();
-  await saveWorkspaceRow(deviceId, fresh);
+  await withTimeout(saveWorkspaceRow(deviceId, fresh), 3500, null);
   emitChange(deviceId, "user_seeded");
   return fresh;
 };
