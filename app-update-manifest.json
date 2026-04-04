@@ -1,14 +1,14 @@
 {
     "appName":  "ZyroAi",
-    "currentVersion":  "1.1.12",
-    "latestVersion":  "1.1.12",
+    "currentVersion":  "1.1.13",
+    "latestVersion":  "1.1.13",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.12/ZyroAi-v1.1.12.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.13/ZyroAi-v1.1.13.apk",
     "releaseNotes":  [
-                         "Fixed backend startup crashes caused by BOM-encoded JSON manifest and fallback store parsing",
-                         "Made auto step tracking work from activity sensors without requiring location just to count steps",
-                         "Kept vehicle filtering when location is enabled so bus and bike travel stays excluded",
-                         "Retained in-app Android updater flow and live release checks"
+                         "Fixed assistant conversation clear so the mobile app and backend now stay in sync",
+                         "Reworked communication CTAs with working snackbars, refresh behavior, and cleaner DND action feedback",
+                         "Added backend delete route coverage for assistant chat history and relaxed profile validation for safer autosave",
+                         "Verified smart step logging and manual step updates with release smoke tests"
                      ]
 }

@@ -19,7 +19,7 @@ class ApiService {
   String? _cachedVersion;
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
-  static const _fallbackAppVersion = '1.1.12';
+  static const _fallbackAppVersion = '1.1.13';
   static const _cloudBase = 'https://zyroai-backend.vercel.app';
 
   static String _defaultBaseUrl() {
@@ -371,6 +371,9 @@ class ApiService {
     return _requestJson('/api/assistant/chat', method: 'POST', body: {'message': message}, error: 'Assistant chat failed');
   }
 
+  Future<void> clearAssistantHistory() async {
+    await _requestJson('/api/assistant/chat', method: 'DELETE', error: 'Assistant history clear failed');
+  }
   Future<void> saveUiPrefs({required bool wellbeingGuardEnabled}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('wellbeing_guard_enabled', wellbeingGuardEnabled);
@@ -399,6 +402,9 @@ class ApiService {
   }
 
 }
+
+
+
 
 
 

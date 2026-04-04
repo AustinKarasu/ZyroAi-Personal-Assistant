@@ -41,6 +41,38 @@ class _AssistantScreenState extends State<AssistantScreen> {
     setState(() => _workspaceFuture = widget.api.fetchWorkspace());
   }
 
+  Future<void> _clearConversation() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _assistantStatus = 'Clearing conversation...';
+    });
+    try {
+      await widget.api.clearAssistantHistory();
+      if (!mounted) return;
+      setState(() {
+        _pendingMessages.clear();
+        _lastAction = null;
+        _lastUserPrompt = null;
+        _assistantStatus = 'Conversation cleared';
+        _workspaceFuture = widget.api.fetchWorkspace();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Assistant conversation cleared.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _assistantStatus = 'Conversation clear failed');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to clear assistant history: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
   Future<void> _sendMessage([String? preset]) async {
     final text = (preset ?? _messageCtrl.text).trim();
     if (text.isEmpty || _loading) return;
@@ -290,12 +322,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                         ),
                         const SizedBox(width: 10),
                         OutlinedButton(
-                          onPressed: conversation.isEmpty
-                              ? null
-                              : () => setState(() {
-                                    _pendingMessages.clear();
-                                    _assistantStatus = 'Conversation cleared';
-                                  }),
+                          onPressed: conversation.isEmpty || _loading ? null : _clearConversation,
                           child: Text(l10n.t('clear')),
                         ),
                       ],

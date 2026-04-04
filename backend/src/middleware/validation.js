@@ -131,8 +131,8 @@ export const schemas = {
     }).optional()
   }),
   updateProfile: z.object({
-    name: z.string().min(2).max(80).or(z.literal("")).optional(),
-    title: z.string().min(2).max(80).or(z.literal("")).optional(),
+    name: z.string().min(1).max(80).or(z.literal("")).optional(),
+    title: z.string().min(1).max(80).or(z.literal("")).optional(),
     email: z.string().email().or(z.literal("")).optional(),
     avatar_url: z.string().url().or(z.literal("")).optional(),
     avatar_color: z.string().min(4).max(20).optional(),
@@ -170,4 +170,5 @@ export const schemas = {
     message: z.string().min(2).max(400)
   })
 };
+
 

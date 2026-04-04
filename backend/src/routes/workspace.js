@@ -1,6 +1,7 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import {
   addAssistantMessagePair,
+  clearAssistantMessages,
   addContact,
   addHabit,
   addMeeting,
@@ -264,4 +265,14 @@ router.post("/assistant/chat", validateBody(schemas.assistantChat), async (req, 
   res.json({ message: saved, action: actionNotice || null });
 });
 
+router.delete('/assistant/chat', async (req, res) => {
+  await ensureUser(req.deviceId);
+  await clearAssistantMessages(req.deviceId);
+  res.json({ cleared: true });
+});
+
 export default router;
+
+
+
+

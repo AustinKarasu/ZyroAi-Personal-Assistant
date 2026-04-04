@@ -14,7 +14,8 @@ class CommunicationScreen extends StatefulWidget {
   State<CommunicationScreen> createState() => _CommunicationScreenState();
 }
 
-class _CommunicationScreenState extends State<CommunicationScreen> {
+class _CommunicationScreenState extends State<CommunicationScreen>
+    with WidgetsBindingObserver {
   late Future<List<Map<String, dynamic>>> _logsFuture;
   final _callerCtrl = TextEditingController();
   final _transcriptCtrl = TextEditingController();
@@ -34,12 +35,16 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _logsFuture = widget.api.fetchCallLogs();
+    _replyNumberCtrl.addListener(_onInputChanged);
     _loadAutomation();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _replyNumberCtrl.removeListener(_onInputChanged);
     _callerCtrl.dispose();
     _transcriptCtrl.dispose();
     _replyNumberCtrl.dispose();
@@ -48,12 +53,26 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadAutomation();
+      _reload();
+    }
+  }
+
+  void _onInputChanged() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _loadAutomation() async {
     try {
       final settings = await widget.api.fetchSettings();
       final payload = (settings['settings'] as Map).cast<String, dynamic>();
-      final automation = (payload['automation'] as Map?)?.cast<String, dynamic>() ?? {};
-      final integrations = (payload['integrations'] as Map?)?.cast<String, dynamic>() ?? {};
+      final automation =
+          (payload['automation'] as Map?)?.cast<String, dynamic>() ?? {};
+      final integrations =
+          (payload['integrations'] as Map?)?.cast<String, dynamic>() ?? {};
       final nativeStatus = await NativeTelecomService.getCallScreeningStatus();
       if (!mounted) return;
       setState(() {
@@ -89,12 +108,20 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
 
   Future<void> _submitLog() async {
     if (_callerCtrl.text.isEmpty || _transcriptCtrl.text.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
-      await widget.api.submitCallLog(_callerCtrl.text.trim(), _transcriptCtrl.text.trim());
+      await widget.api.submitCallLog(
+        _callerCtrl.text.trim(),
+        _transcriptCtrl.text.trim(),
+      );
       _callerCtrl.clear();
       _transcriptCtrl.clear();
       await _reload();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Call analyzed and saved.')),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -102,6 +129,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
 
   Future<void> _simulateIncomingCall() async {
     if (_callerCtrl.text.isEmpty || _transcriptCtrl.text.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
       final response = await widget.api.handleIncomingCall(
@@ -115,6 +143,16 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
             : response['summary']?.toString() ?? 'Incoming call processed.';
       });
       await _reload();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            response['handledByDnd'] == true
+                ? 'DND flow handled the incoming call.'
+                : 'Incoming call processed.',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -124,9 +162,13 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     setState(() => _busy = true);
     try {
       final msg = await widget.api.generateAutoReply(
-        _replySenderCtrl.text.trim().isEmpty ? 'Alex' : _replySenderCtrl.text.trim(),
+        _replySenderCtrl.text.trim().isEmpty
+            ? 'Alex'
+            : _replySenderCtrl.text.trim(),
         _replyContext,
-        _replyUntilCtrl.text.trim().isEmpty ? 'later today' : _replyUntilCtrl.text.trim(),
+        _replyUntilCtrl.text.trim().isEmpty
+            ? 'later today'
+            : _replyUntilCtrl.text.trim(),
       );
       if (!mounted) return;
       setState(() => _autoReply = msg);
@@ -136,11 +178,12 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   }
 
   Future<void> _requestNativeRole() async {
+    final messenger = ScaffoldMessenger.of(context);
     final granted = await NativeTelecomService.requestCallScreeningRole();
     _nativeStatus = await NativeTelecomService.getCallScreeningStatus();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
         content: Text(
           granted
@@ -152,11 +195,12 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   }
 
   Future<void> _requestSmsPermission() async {
+    final messenger = ScaffoldMessenger.of(context);
     final status = await Permission.sms.request();
     _nativeStatus = await NativeTelecomService.getCallScreeningStatus();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
         content: Text(
           status.isGranted
@@ -170,6 +214,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   Future<void> _sendGeneratedSms() async {
     final number = _replyNumberCtrl.text.trim();
     if (number.isEmpty || _autoReply.trim().isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
       final sent = await NativeTelecomService.sendSms(
@@ -177,9 +222,13 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
         message: _autoReply.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
-          content: Text(sent ? 'SMS sent to $number.' : 'SMS could not be sent. Check SMS permission and number format.'),
+          content: Text(
+            sent
+                ? 'SMS sent to $number.'
+                : 'SMS could not be sent. Check SMS permission and number format.',
+          ),
         ),
       );
     } finally {
@@ -190,6 +239,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   }
 
   Future<void> _authorizePlatform(String platform) async {
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
       final response = await widget.api.startIntegrationAuth(platform);
@@ -197,17 +247,37 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
       final authUrl = response['authUrl']?.toString() ?? '';
       if (!configured || authUrl.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_platformLabel(platform)} is not configured yet. Add provider credentials first.')),
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              '${_platformLabel(platform)} is not configured yet. Add provider credentials first.',
+            ),
+          ),
         );
         return;
       }
-      final launched = await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to open ${_platformLabel(platform)} authorization link.')),
+      final launched = await launchUrl(
+        Uri.parse(authUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!mounted) return;
+      if (!launched) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to open ${_platformLabel(platform)} authorization link.',
+            ),
+          ),
         );
+        return;
       }
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${_platformLabel(platform)} authorization opened. Return to ZyroAi after provider approval to refresh status.',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -235,7 +305,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Communications Command', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+              const Text(
+                'Communications Command',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 6),
               const Text(
                 'Call triage, DND automation, message autopilot, and connected channel controls in one operator console.',
@@ -262,7 +335,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('DND Call Handling', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                const Text(
+                  'DND Call Handling',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
                 const SizedBox(height: 8),
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
@@ -284,7 +360,9 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Auto-draft busy message replies'),
-                  subtitle: const Text('Keeps message response logic aligned with DND mode and current context.'),
+                  subtitle: const Text(
+                    'Keeps message response logic aligned with DND mode and current context.',
+                  ),
                   value: _smsAutoReply,
                   onChanged: (value) async {
                     setState(() => _smsAutoReply = value);
@@ -294,9 +372,15 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 const SizedBox(height: 8),
                 if (!nativeReady)
                   OutlinedButton.icon(
-                    onPressed: _nativeStatus['supported'] == true ? _requestNativeRole : null,
+                    onPressed: _nativeStatus['supported'] == true
+                        ? _requestNativeRole
+                        : null,
                     icon: const Icon(Icons.phone_in_talk_outlined),
-                    label: Text(_nativeStatus['supported'] == true ? 'Enable Native Screening' : 'Screening Not Supported'),
+                    label: Text(
+                      _nativeStatus['supported'] == true
+                          ? 'Enable Native Screening'
+                          : 'Screening Not Supported',
+                    ),
                   ),
                 if (nativeReady) ...[
                   const SizedBox(height: 8),
@@ -330,7 +414,9 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 OutlinedButton.icon(
                   onPressed: smsReady ? null : _requestSmsPermission,
                   icon: const Icon(Icons.sms_outlined),
-                  label: Text(smsReady ? 'SMS Permission Active' : 'Enable SMS Replies'),
+                  label: Text(
+                    smsReady ? 'SMS Permission Active' : 'Enable SMS Replies',
+                  ),
                 ),
               ],
             ),
@@ -343,7 +429,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Call Intake Lab', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                const Text(
+                  'Call Intake Lab',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _callerCtrl,
@@ -372,8 +461,15 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                     ),
                     OutlinedButton.icon(
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         await widget.api.clearCallLogs();
                         await _reload();
+                        if (!mounted) return;
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Communication history cleared.'),
+                          ),
+                        );
                       },
                       icon: const Icon(Icons.delete_sweep_outlined),
                       label: const Text('Clear History'),
@@ -391,7 +487,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Messaging Auto-Reply Lab', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                const Text(
+                  'Messaging Auto-Reply Lab',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
@@ -429,7 +528,8 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 TextField(
                   controller: _replyNumberCtrl,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Recipient phone number'),
+                  decoration:
+                      const InputDecoration(labelText: 'Recipient phone number'),
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -482,7 +582,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Latest DND Action', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  const Text(
+                    'Latest DND Action',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
                   const SizedBox(height: 8),
                   Text(_incomingSummary),
                 ],
@@ -497,22 +600,32 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Connected Channels', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                const Text(
+                  'Connected Channels',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
                 const SizedBox(height: 8),
                 const Text(
                   'Authorize channels on this device so ZyroAi can store consent state, automation preferences, and reply context.',
                 ),
                 const SizedBox(height: 12),
-                ...['whatsapp', 'instagram', 'facebook', 'messenger', 'x'].map((platform) {
-                  final meta = (_integrations[platform] as Map?)?.cast<String, dynamic>() ?? {};
+                ...['whatsapp', 'instagram', 'facebook', 'messenger', 'x']
+                    .map((platform) {
+                  final meta = (_integrations[platform] as Map?)
+                          ?.cast<String, dynamic>() ??
+                      {};
                   final connected = meta['connected'] == true;
-                  final status = meta['status']?.toString() ?? (connected ? "authorized" : "not_authorized");
-                  final permissions = ((meta['permissions'] as List?) ?? const []).join(', ');
+                  final status = meta['status']?.toString() ??
+                      (connected ? 'authorized' : 'not_authorized');
+                  final permissions =
+                      ((meta['permissions'] as List?) ?? const []).join(', ');
                   final statusLabel = connected
-                      ? (permissions.isEmpty ? "Authorized" : "Authorized for $permissions")
-                      : status == "auth_pending"
-                          ? "Authorization pending"
-                          : "Not authorized yet";
+                      ? (permissions.isEmpty
+                          ? 'Authorized'
+                          : 'Authorized for $permissions')
+                      : status == 'auth_pending'
+                          ? 'Authorization pending'
+                          : 'Not authorized yet';
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
@@ -526,7 +639,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(_platformLabel(platform), style: const TextStyle(fontWeight: FontWeight.w700)),
+                              Text(
+                                _platformLabel(platform),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
                               const SizedBox(height: 4),
                               Text(
                                 statusLabel,
@@ -556,14 +672,18 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
-              return Center(child: Text('Communication feed failed: ${snapshot.error}'));
+              return Center(
+                child: Text('Communication feed failed: ${snapshot.error}'),
+              );
             }
             final logs = snapshot.data ?? [];
             if (logs.isEmpty) {
               return const Card(
                 child: Padding(
                   padding: EdgeInsets.all(16),
-                  child: Text('No call activity yet. Once calls are analyzed or screened, they will appear here.'),
+                  child: Text(
+                    'No call activity yet. Once calls are analyzed or screened, they will appear here.',
+                  ),
                 ),
               );
             }
@@ -573,7 +693,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Recent Calls', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    const Text(
+                      'Recent Calls',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
                     const SizedBox(height: 10),
                     ...logs.map((log) {
                       final handledByDnd = log['handled_by_dnd'] == true;
@@ -590,7 +713,9 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                                 ? Colors.orange.withValues(alpha: 0.18)
                                 : Colors.blue.withValues(alpha: 0.18),
                             child: Icon(
-                              handledByDnd ? Icons.phone_disabled_outlined : Icons.call_outlined,
+                              handledByDnd
+                                  ? Icons.phone_disabled_outlined
+                                  : Icons.call_outlined,
                               size: 18,
                             ),
                           ),
@@ -609,15 +734,23 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                                     Uri.parse(recordingUrl),
                                     mode: LaunchMode.externalApplication,
                                   ),
-                                  icon: const Icon(Icons.play_circle_outline, size: 18),
+                                  icon: const Icon(
+                                    Icons.play_circle_outline,
+                                    size: 18,
+                                  ),
                                   label: const Text('Play recording'),
                                 ),
                             ],
                           ),
                           trailing: IconButton(
                             onPressed: () async {
+                              final messenger = ScaffoldMessenger.of(context);
                               await widget.api.deleteCallLog(log['id'].toString());
                               await _reload();
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                const SnackBar(content: Text('Call log deleted.')),
+                              );
                             },
                             icon: const Icon(Icons.delete_outline),
                           ),
@@ -662,8 +795,3 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     }
   }
 }
-
-
-
-
-

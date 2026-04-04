@@ -844,6 +844,12 @@ export const addAssistantMessagePair = async (deviceId, question, answer) =>
     return assistantMessage;
   }, "Assistant produced a response.");
 
+export const clearAssistantMessages = async (deviceId) =>
+  mutateWorkspace(deviceId, "assistant_replied", async (workspace) => {
+    workspace.assistant_messages = [];
+    return true;
+  }, "Assistant conversation cleared.");
+
 export const listAuditLogs = async (deviceId) => {
   const workspace = await loadWorkspace(deviceId);
   return [...workspace.audit_logs].sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -1108,6 +1114,10 @@ export const completeIntegrationAuth = async (deviceId, platform, payload) =>
     );
     return workspace.settings.integrations[platform];
   }, `${integrationDisplayNames[platform] || platform} authorized.`);
+
+
+
+
 
 
 
