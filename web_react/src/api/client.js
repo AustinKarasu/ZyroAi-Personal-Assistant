@@ -2,9 +2,12 @@
 const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
 const browserHost = window.location.hostname || "127.0.0.1";
 const apiHost = browserHost === "0.0.0.0" ? "127.0.0.1" : browserHost;
-const API_BASE = localHosts.has(browserHost)
+const PRIMARY_API_BASE = localHosts.has(browserHost)
   ? `${window.location.protocol}//${apiHost}:8080/api`
   : (import.meta.env.VITE_API_BASE || DEFAULT_CLOUD_API_BASE);
+const SECONDARY_API_BASE = localHosts.has(browserHost)
+  ? (import.meta.env.VITE_API_BASE || DEFAULT_CLOUD_API_BASE)
+  : null;
 const DEVICE_KEY = "chief_device_id";
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.5";
 const WORKSPACE_CACHE_KEY = "zyroai_workspace_cache";
@@ -28,17 +31,31 @@ async function parse(response, errorText) {
   return response.json();
 }
 
+async function fetchWithTimeout(url, options, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function request(path, options = {}, errorText = "Request failed") {
-  return parse(
-    await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        ...headers,
-        ...(options.headers || {})
-      }
-    }),
-    errorText
-  );
+  const requestOptions = {
+    ...options,
+    headers: {
+      ...headers,
+      ...(options.headers || {})
+    }
+  };
+
+  try {
+    return parse(await fetchWithTimeout(`${PRIMARY_API_BASE}${path}`, requestOptions), errorText);
+  } catch (primaryError) {
+    if (!SECONDARY_API_BASE) throw primaryError;
+    return parse(await fetchWithTimeout(`${SECONDARY_API_BASE}${path}`, requestOptions), errorText);
+  }
 }
 
 export const chiefDeviceId = DEVICE_ID;
@@ -86,7 +103,8 @@ export function subscribeToWorkspace(onMessage) {
 
   const connect = () => {
     if (closed) return;
-    stream = new EventSource(`${API_BASE}/stream?deviceId=${encodeURIComponent(DEVICE_ID)}`);
+    const streamBase = PRIMARY_API_BASE || SECONDARY_API_BASE || DEFAULT_CLOUD_API_BASE;
+    stream = new EventSource(`${streamBase}/stream?deviceId=${encodeURIComponent(DEVICE_ID)}`);
     stream.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);

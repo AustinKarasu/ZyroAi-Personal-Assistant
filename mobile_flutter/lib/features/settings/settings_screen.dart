@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -86,7 +87,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    await widget.api.saveApiBaseUrl(_apiBaseUrlCtrl.text.trim());
+    if (kDebugMode) {
+      await widget.api.saveApiBaseUrl(_apiBaseUrlCtrl.text.trim());
+    }
     await widget.api.saveProfile({
       'name': _nameCtrl.text.trim(),
       'title': _titleCtrl.text.trim(),
@@ -242,7 +245,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 10),
                 TextField(controller: _goalCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Daily step goal')),
                 const SizedBox(height: 10),
-                TextField(controller: _apiBaseUrlCtrl, decoration: const InputDecoration(labelText: 'Backend API base URL')),
+                if (kDebugMode)
+                  TextField(controller: _apiBaseUrlCtrl, decoration: const InputDecoration(labelText: 'Backend API base URL (Debug)'))
+                else
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Backend'),
+                    subtitle: Text('Connected to secure ZyroAi cloud endpoint'),
+                  ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: (_profile['language'] ?? 'en').toString(),

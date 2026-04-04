@@ -20,12 +20,33 @@ class ApiService {
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
   static const _fallbackAppVersion = '1.1.5';
+  static const _cloudBase = 'https://zyroai-backend.vercel.app';
 
   static String _defaultBaseUrl() {
-    const cloudBase = 'https://zyroai-backend.vercel.app';
-    if (kIsWeb) return cloudBase;
-    if (Platform.isAndroid) return cloudBase;
-    return cloudBase;
+    if (kIsWeb) return _cloudBase;
+    if (Platform.isAndroid) return _cloudBase;
+    return _cloudBase;
+  }
+
+  String _sanitizeBaseUrl(String? value) {
+    final trimmed = (value ?? '').trim();
+    if (trimmed.isEmpty) return _baseUrl;
+
+    final withoutTrailingSlash = trimmed.endsWith('/')
+        ? trimmed.substring(0, trimmed.length - 1)
+        : trimmed;
+    final uri = Uri.tryParse(withoutTrailingSlash);
+    if (uri == null || uri.host.isEmpty) return _baseUrl;
+
+    final host = uri.host.toLowerCase();
+    final isLocalHost = host == 'localhost' || host == '127.0.0.1' || host == '10.0.2.2';
+    final isSecure = uri.scheme == 'https';
+
+    if (!kDebugMode && (isLocalHost || !isSecure)) {
+      return _baseUrl;
+    }
+
+    return withoutTrailingSlash;
   }
 
   Future<String> _deviceId() async {
@@ -65,27 +86,60 @@ class ApiService {
 
   Future<String> _currentBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_apiBaseUrlKey) ?? _baseUrl;
+    final normalized = _sanitizeBaseUrl(prefs.getString(_apiBaseUrlKey));
+    if (normalized != prefs.getString(_apiBaseUrlKey)) {
+      await prefs.setString(_apiBaseUrlKey, normalized);
+    }
+    return normalized;
   }
 
   Future<void> saveApiBaseUrl(String value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_apiBaseUrlKey, value);
+    await prefs.setString(_apiBaseUrlKey, _sanitizeBaseUrl(value));
   }
 
   Future<String> loadApiBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_apiBaseUrlKey) ?? _baseUrl;
+    final normalized = _sanitizeBaseUrl(prefs.getString(_apiBaseUrlKey));
+    if (normalized != prefs.getString(_apiBaseUrlKey)) {
+      await prefs.setString(_apiBaseUrlKey, normalized);
+    }
+    return normalized;
+  }
+
+  Future<http.Response> _sendRequest(
+    Uri uri,
+    String method,
+    Map<String, String> requestHeaders,
+    Map<String, dynamic>? body,
+  ) {
+    final encodedBody = body == null ? null : jsonEncode(body);
+    final future = switch (method) {
+      'POST' => http.post(uri, headers: requestHeaders, body: encodedBody),
+      'PATCH' => http.patch(uri, headers: requestHeaders, body: encodedBody),
+      _ => http.get(uri, headers: requestHeaders),
+    };
+    return future.timeout(const Duration(seconds: 15));
   }
 
   Future<Map<String, dynamic>> _requestJson(String path, {String method = 'GET', Map<String, dynamic>? body, String? error}) async {
-    final uri = Uri.parse('${await _currentBaseUrl()}$path');
     final requestHeaders = await _headers();
-    final response = switch (method) {
-      'POST' => await http.post(uri, headers: requestHeaders, body: body == null ? null : jsonEncode(body)),
-      'PATCH' => await http.patch(uri, headers: requestHeaders, body: body == null ? null : jsonEncode(body)),
-      _ => await http.get(uri, headers: requestHeaders),
-    };
+    final activeBase = await _currentBaseUrl();
+    final activeUri = Uri.parse('$activeBase$path');
+    http.Response response;
+
+    try {
+      response = await _sendRequest(activeUri, method, requestHeaders, body);
+    } catch (_) {
+      if (activeBase == _baseUrl) {
+        throw Exception(error ?? 'Request failed');
+      }
+      final fallbackUri = Uri.parse('$_baseUrl$path');
+      response = await _sendRequest(fallbackUri, method, requestHeaders, body);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_apiBaseUrlKey, _baseUrl);
+    }
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(error ?? 'Request failed');
     }
