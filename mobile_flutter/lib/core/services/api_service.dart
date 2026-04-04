@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -15,8 +16,10 @@ class ApiService {
 
   final String _baseUrl;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  String? _cachedVersion;
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
+  static const _fallbackAppVersion = '1.1.5';
 
   static String _defaultBaseUrl() {
     if (kIsWeb) return 'http://127.0.0.1:8080';
@@ -33,12 +36,29 @@ class ApiService {
     return random;
   }
 
+  Future<String> _appVersion() async {
+    if (_cachedVersion != null && _cachedVersion!.isNotEmpty) return _cachedVersion!;
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      _cachedVersion = packageInfo.version;
+      return _cachedVersion!;
+    } on MissingPluginException {
+      _cachedVersion = _fallbackAppVersion;
+      return _cachedVersion!;
+    } on PlatformException {
+      _cachedVersion = _fallbackAppVersion;
+      return _cachedVersion!;
+    } catch (_) {
+      _cachedVersion = _fallbackAppVersion;
+      return _cachedVersion!;
+    }
+  }
+
   Future<Map<String, String>> _headers() async {
-    final packageInfo = await PackageInfo.fromPlatform();
     return {
       'Content-Type': 'application/json',
       'x-device-id': await _deviceId(),
-      'x-app-version': packageInfo.version,
+      'x-app-version': await _appVersion(),
     };
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,6 +15,7 @@ import 'features/settings/memory_screen.dart';
 import 'features/settings/settings_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const ChiefApp());
 }
 
@@ -42,10 +44,22 @@ class _ChiefAppState extends State<ChiefApp> {
   }
 
   Future<void> _handleInstalledVersionChange() async {
-    final packageInfo = await PackageInfo.fromPlatform();
     final prefs = await SharedPreferences.getInstance();
     final previousVersion = prefs.getString(_installedVersionKey);
-    final currentVersion = packageInfo.version;
+    String currentVersion = '1.1.5';
+
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (packageInfo.version.isNotEmpty) {
+        currentVersion = packageInfo.version;
+      }
+    } on MissingPluginException {
+      // Keep fallback version when plugin isn't available on this runtime.
+    } on PlatformException {
+      // Keep fallback version when package_info platform channel fails.
+    } catch (_) {
+      // Keep fallback version as a safe default.
+    }
 
     if (previousVersion != null && previousVersion != currentVersion) {
       await _api.clearLocalCache();

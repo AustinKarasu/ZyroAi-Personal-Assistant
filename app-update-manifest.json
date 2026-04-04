@@ -1,13 +1,13 @@
 {
   "appName": "ZyroAi",
   "currentVersion": "1.0.0",
-  "latestVersion": "1.1.4",
+  "latestVersion": "1.1.5",
   "channel": "stable",
   "mandatory": false,
-  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.4/ZyroAi-v1.1.4.apk",
+  "downloadUrl": "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.5/ZyroAi-v1.1.5.apk",
   "releaseNotes": [
-    "Native Android call-screening role support added",
-    "Mobile settings now request real device permissions and sync DND call automation",
-    "Communication screen improved with real incoming-call simulation feedback"
+    "Fixed MissingPluginException handling for package_info_plus on mobile startup",
+    "Hardened mobile API header generation with app-version fallback",
+    "Stability release for Android initialization and update flow safety"
   ]
 }
