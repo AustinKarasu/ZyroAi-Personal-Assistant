@@ -52,7 +52,7 @@ export const loadUpdateManifest = async (clientVersion) => {
   }
 
   try {
-    const response = await fetch(configuredUrl);
+    const response = await fetch(configuredUrl, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) {
       throw new Error(`Manifest fetch failed with ${response.status}`);
     }
