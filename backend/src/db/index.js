@@ -363,7 +363,14 @@ const loadWorkspaceRow = async (deviceId) => {
     return loaded;
   }
   if (storageMode === "supabase-cloud") {
-    loaded = await loadCloudWorkspaceRow(deviceId);
+    try {
+      loaded = await loadCloudWorkspaceRow(deviceId);
+    } catch (error) {
+      console.warn(`Cloud load degraded to local fallback: ${error.message}`);
+      storageMode = "local-fallback";
+      const store = readFallbackStore();
+      loaded = store[deviceId] ? normalizeWorkspace(store[deviceId]) : null;
+    }
     if (loaded) setCachedWorkspace(deviceId, loaded);
     return loaded;
   }
@@ -384,7 +391,15 @@ const saveWorkspaceRow = async (deviceId, workspace) => {
     return;
   }
   if (storageMode === "supabase-cloud") {
-    await saveCloudWorkspaceRow(deviceId, normalized);
+    try {
+      await saveCloudWorkspaceRow(deviceId, normalized);
+    } catch (error) {
+      console.warn(`Cloud save degraded to local fallback: ${error.message}`);
+      storageMode = "local-fallback";
+      const store = readFallbackStore();
+      store[deviceId] = normalized;
+      writeFallbackStore(store);
+    }
     return;
   }
   await pool.query(
