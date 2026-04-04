@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ensureUser, getModeState, listTasks, updateTaskStatus, upsertTask } from "../db/index.js";
+import { clearTasks, ensureUser, getModeState, listTasks, updateTaskStatus, upsertTask } from "../db/index.js";
 import { validateBody, schemas } from "../middleware/validation.js";
 import { evaluateTaskPriority, suggestFocusBlocks } from "../services/prioritization.js";
 
@@ -46,6 +46,12 @@ router.patch("/tasks/:id/status", validateBody(schemas.updateTaskStatus), async 
     return res.status(404).json({ error: "Task not found" });
   }
   return res.json({ task: updated });
+});
+
+router.delete("/tasks", async (req, res) => {
+  await ensureUser(req.deviceId);
+  await clearTasks(req.deviceId);
+  return res.json({ cleared: true });
 });
 
 export default router;

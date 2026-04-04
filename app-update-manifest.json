@@ -1,13 +1,15 @@
 {
     "appName":  "ZyroAi",
-    "currentVersion":  "1.1.6",
-    "latestVersion":  "1.1.6",
+    "currentVersion":  "1.1.7",
+    "latestVersion":  "1.1.7",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://raw.githubusercontent.com/AustinKarasu/ZyroAi-Personal-Assistant/main/apk/ZyroAi-v1.1.6.apk",
+    "downloadUrl":  "https://raw.githubusercontent.com/AustinKarasu/ZyroAi-Personal-Assistant/main/apk/ZyroAi-v1.1.7.apk",
     "releaseNotes":  [
-                         "Fixed app freeze/loading by forcing secure cloud API fallback in production",
-                         "Blocked stale local emulator API URLs from breaking mobile devices",
-                         "Added resilient request timeout and retry fallback for mobile and web clients"
+                         "Upgraded mobile UI with premium dashboard and improved navigation experience",
+                         "Communication center now supports delete call log and clear history with real API endpoints",
+                         "Settings now autosave and theme switching applies live across the app",
+                         "Added page-level clear-history controls for tasks, memory, decisions, and step history",
+                         "Improved backend responsiveness with compression and short-lived workspace caching"
                      ]
 }

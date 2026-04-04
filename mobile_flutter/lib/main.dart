@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'core/chief_theme.dart';
 import 'core/services/api_service.dart';
 import 'core/services/motion_tracking_service.dart';
+import 'core/services/notification_service.dart';
 import 'features/communication/communication_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/decision/decision_screen.dart';
@@ -26,27 +27,60 @@ class ChiefApp extends StatefulWidget {
   State<ChiefApp> createState() => _ChiefAppState();
 }
 
-class _ChiefAppState extends State<ChiefApp> {
+class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
   static const _installedVersionKey = 'installed_app_version';
 
   int _index = 0;
   final _api = ApiService();
   bool _updatePromptChecked = false;
+  String _themeName = 'black-gold';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadTheme();
+      await NotificationService.instance.init();
       await _handleInstalledVersionChange();
       await MotionTrackingService.instance.start(_api);
       await _maybeShowUpdatePrompt();
     });
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      MotionTrackingService.instance.refreshConfig();
+    }
+  }
+
+  Future<void> _loadTheme() async {
+    try {
+      final settingsRes = await _api.fetchSettings();
+      final settings = (settingsRes['settings'] as Map).cast<String, dynamic>();
+      final appearance = (settings['appearance'] as Map?)?.cast<String, dynamic>() ?? {};
+      final theme = (appearance['theme'] ?? 'black-gold').toString();
+      if (!mounted) return;
+      setState(() => _themeName = theme);
+    } catch (_) {}
+  }
+
+  void _onThemeChanged(String name) {
+    if (!mounted) return;
+    setState(() => _themeName = name);
+  }
+
   Future<void> _handleInstalledVersionChange() async {
     final prefs = await SharedPreferences.getInstance();
     final previousVersion = prefs.getString(_installedVersionKey);
-    String currentVersion = '1.1.5';
+    String currentVersion = '1.1.7';
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
@@ -129,7 +163,7 @@ class _ChiefAppState extends State<ChiefApp> {
       DecisionScreen(api: _api),
       IntelligenceScreen(api: _api),
       MemoryScreen(api: _api),
-      SettingsScreen(api: _api),
+      SettingsScreen(api: _api, onThemeChanged: _onThemeChanged),
     ];
 
     const items = [
@@ -144,18 +178,19 @@ class _ChiefAppState extends State<ChiefApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'ZyroAi',
-      theme: ChiefTheme.light,
+      theme: ChiefTheme.fromName(_themeName),
       home: Scaffold(
         appBar: AppBar(
+          toolbarHeight: 72,
           titleSpacing: 0,
           title: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 child: Image.asset(
                   'assets/images/zyroai-logo.jpg',
-                  width: 34,
-                  height: 34,
+                  width: 38,
+                  height: 38,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -164,7 +199,7 @@ class _ChiefAppState extends State<ChiefApp> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('ZyroAi'),
+                  const Text('ZyroAi', style: TextStyle(fontWeight: FontWeight.w800)),
                   Text(items[_index].label, style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
@@ -172,21 +207,30 @@ class _ChiefAppState extends State<ChiefApp> {
           ),
         ),
         drawer: Drawer(
+          backgroundColor: const Color(0xFF0B121D),
           child: SafeArea(
             child: Column(
               children: [
-                ListTile(
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      'assets/images/zyroai-logo.jpg',
-                      width: 42,
-                      height: 42,
-                      fit: BoxFit.cover,
-                    ),
+                Container(
+                  margin: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFF16243F), Color(0xFF0D1627)]),
+                    borderRadius: BorderRadius.circular(18),
                   ),
-                  title: const Text('ZyroAi'),
-                  subtitle: const Text('Executive mobile control center'),
+                  child: ListTile(
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'assets/images/zyroai-logo.jpg',
+                        width: 42,
+                        height: 42,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    title: const Text('ZyroAi'),
+                    subtitle: const Text('Executive mobile control center'),
+                  ),
                 ),
                 const Divider(),
                 Expanded(

@@ -1,8 +1,13 @@
 import { Router } from "express";
-import { addDecisionRecord, ensureUser } from "../db/index.js";
+import { addDecisionRecord, clearDecisions, ensureUser, listDecisions } from "../db/index.js";
 import { validateBody, schemas } from "../middleware/validation.js";
 
 const router = Router();
+
+router.get("/decide", async (req, res) => {
+  await ensureUser(req.deviceId);
+  res.json({ decisions: await listDecisions(req.deviceId) });
+});
 
 router.post("/decide", validateBody(schemas.decide), async (req, res) => {
   await ensureUser(req.deviceId);
@@ -32,6 +37,12 @@ router.post("/decide", validateBody(schemas.decide), async (req, res) => {
     confidence,
     breakdown: scored
   });
+});
+
+router.delete("/decide", async (req, res) => {
+  await ensureUser(req.deviceId);
+  await clearDecisions(req.deviceId);
+  res.json({ cleared: true });
 });
 
 export default router;

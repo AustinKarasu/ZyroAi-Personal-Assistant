@@ -1,7 +1,7 @@
 ﻿name: ai_personal_chief_mobile
 description: ZyroAi mobile app
 publish_to: 'none'
-version: 1.1.5+5
+version: 1.1.7+7
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -20,6 +20,7 @@ dependencies:
   shared_preferences: ^2.2.3
   speech_to_text: ^7.0.0
   url_launcher: ^6.3.0
+  flutter_local_notifications: ^17.2.3
 
 dev_dependencies:
   flutter_test:

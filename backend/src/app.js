@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
+import compression from "compression";
 import dashboardRoutes from "./routes/dashboard.js";
 import decisionRoutes from "./routes/decision.js";
 import memoryRoutes from "./routes/memory.js";
@@ -20,6 +21,7 @@ export const buildApp = () => {
     .filter(Boolean);
 
   app.use(helmet());
+  app.use(compression());
   app.use(
     cors({
       origin(origin, callback) {

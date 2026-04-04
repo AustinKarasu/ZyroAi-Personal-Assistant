@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'dart:async';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -11,9 +12,10 @@ import '../../core/services/motion_tracking_service.dart';
 import '../../core/services/native_telecom_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.api});
+  const SettingsScreen({super.key, required this.api, required this.onThemeChanged});
 
   final ApiService api;
+  final ValueChanged<String> onThemeChanged;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -30,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _titleCtrl = TextEditingController();
   final _goalCtrl = TextEditingController();
   final _apiBaseUrlCtrl = TextEditingController();
+  Timer? _autosaveTimer;
 
   @override
   void initState() {
@@ -38,28 +41,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _load() async {
-    final profileRes = await widget.api.fetchProfile();
-    final settingsRes = await widget.api.fetchSettings();
-    final apiBaseUrl = await widget.api.loadApiBaseUrl();
-    final profile = (profileRes['profile'] as Map).cast<String, dynamic>();
-    final settings = (settingsRes['settings'] as Map).cast<String, dynamic>();
-    final deviceInfo = await _loadDeviceInfo();
-    final callScreening = Platform.isAndroid
-        ? await NativeTelecomService.getCallScreeningStatus()
-        : <String, dynamic>{'supported': false, 'roleHeld': false};
+    try {
+      final profileRes = await widget.api.fetchProfile();
+      final settingsRes = await widget.api.fetchSettings();
+      final apiBaseUrl = await widget.api.loadApiBaseUrl();
+      final profile = (profileRes['profile'] as Map).cast<String, dynamic>();
+      final settings = (settingsRes['settings'] as Map).cast<String, dynamic>();
+      final deviceInfo = await _loadDeviceInfo();
+      final callScreening = Platform.isAndroid
+          ? await NativeTelecomService.getCallScreeningStatus()
+          : <String, dynamic>{'supported': false, 'roleHeld': false};
 
-    _nameCtrl.text = profile['name']?.toString() ?? '';
-    _titleCtrl.text = profile['title']?.toString() ?? '';
-    _goalCtrl.text = (profile['daily_step_goal'] ?? 8000).toString();
-    _apiBaseUrlCtrl.text = apiBaseUrl;
+      _nameCtrl.text = profile['name']?.toString() ?? '';
+      _titleCtrl.text = profile['title']?.toString() ?? '';
+      _goalCtrl.text = (profile['daily_step_goal'] ?? 8000).toString();
+      _apiBaseUrlCtrl.text = apiBaseUrl;
 
-    setState(() {
-      _profile = profile;
-      _settings = settings;
-      _deviceInfo = deviceInfo;
-      _callScreening = callScreening;
-      _loading = false;
-    });
+      setState(() {
+        _profile = profile;
+        _settings = settings;
+        _deviceInfo = deviceInfo;
+        _callScreening = callScreening;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings loading fallback active.')));
+    }
+  }
+
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    _nameCtrl.dispose();
+    _titleCtrl.dispose();
+    _goalCtrl.dispose();
+    _apiBaseUrlCtrl.dispose();
+    super.dispose();
   }
 
   Future<Map<String, String>> _loadDeviceInfo() async {
@@ -111,6 +130,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
   }
 
+  void _scheduleAutosave({bool syncNative = false, bool refreshMotion = false}) {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 450), () async {
+      if (!mounted) return;
+      try {
+        await widget.api.saveSettings(_settings);
+        if (syncNative && Platform.isAndroid) {
+          final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
+          await NativeTelecomService.syncCallAutomation(
+            dndMode: automation['dndMode'] == true,
+            callAutoReply: automation['callAutoReply'] != false,
+          );
+          _callScreening = await NativeTelecomService.getCallScreeningStatus();
+        }
+        if (refreshMotion) {
+          await MotionTrackingService.instance.refreshConfig();
+        }
+      } catch (_) {}
+      if (mounted) setState(() {});
+    });
+  }
+
   Future<void> _openSupport() async {
     final uri = Uri.parse('mailto:berrykarasu@gmail.com?subject=ZyroAi%20Support');
     await launchUrl(uri);
@@ -139,6 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       permissions[key] = granted;
       _settings['permissions'] = permissions;
     });
+    _scheduleAutosave(refreshMotion: key == 'location' || key == 'activity');
   }
 
   Future<void> _requestCallScreeningRole() async {
@@ -239,11 +281,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _sectionTitle('Profile', 'Identity, language, and step goals'),
-                TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+                TextField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                  onChanged: (value) {
+                    _profile['name'] = value;
+                  },
+                  onEditingComplete: () => _save(),
+                ),
                 const SizedBox(height: 10),
-                TextField(controller: _titleCtrl, decoration: const InputDecoration(labelText: 'Title')),
+                TextField(
+                  controller: _titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Title'),
+                  onChanged: (value) {
+                    _profile['title'] = value;
+                  },
+                  onEditingComplete: () => _save(),
+                ),
                 const SizedBox(height: 10),
-                TextField(controller: _goalCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Daily step goal')),
+                TextField(
+                  controller: _goalCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Daily step goal'),
+                  onEditingComplete: () => _save(),
+                ),
                 const SizedBox(height: 10),
                 if (kDebugMode)
                   TextField(controller: _apiBaseUrlCtrl, decoration: const InputDecoration(labelText: 'Backend API base URL (Debug)'))
@@ -263,7 +324,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     DropdownMenuItem(value: 'es', child: Text('Spanish')),
                     DropdownMenuItem(value: 'ar', child: Text('Arabic')),
                   ],
-                  onChanged: (value) => setState(() => _profile['language'] = value),
+                  onChanged: (value) {
+                    setState(() => _profile['language'] = value);
+                    _save();
+                  },
                 ),
               ],
             ),
@@ -284,6 +348,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (value) => setState(() {
                     automation['dndMode'] = value;
                     _settings['automation'] = automation;
+                    _scheduleAutosave(syncNative: true);
                   }),
                 ),
                 _toggleTile(
@@ -293,6 +358,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (value) => setState(() {
                     automation['callAutoReply'] = value;
                     _settings['automation'] = automation;
+                    _scheduleAutosave(syncNative: true);
                   }),
                 ),
                 _toggleTile(
@@ -302,6 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (value) => setState(() {
                     automation['autoStepTracking'] = value;
                     _settings['automation'] = automation;
+                    _scheduleAutosave(refreshMotion: true);
                   }),
                 ),
               ],
@@ -351,6 +418,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : setState(() {
                           permissions['location'] = false;
                           _settings['permissions'] = permissions;
+                          _scheduleAutosave(refreshMotion: true);
                         }),
                 ),
                 _toggleTile(
@@ -362,6 +430,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : setState(() {
                           permissions['activity'] = false;
                           _settings['permissions'] = permissions;
+                          _scheduleAutosave(refreshMotion: true);
                         }),
                 ),
                 _toggleTile(
@@ -373,6 +442,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : setState(() {
                           permissions['notifications'] = false;
                           _settings['permissions'] = permissions;
+                          _scheduleAutosave();
                         }),
                 ),
                 _toggleTile(
@@ -384,6 +454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : setState(() {
                           permissions['microphone'] = false;
                           _settings['permissions'] = permissions;
+                          _scheduleAutosave();
                         }),
                 ),
               ],
@@ -406,7 +477,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     DropdownMenuItem(value: 'black-ice', child: Text('Black Ice')),
                     DropdownMenuItem(value: 'obsidian-blue', child: Text('Obsidian Blue')),
                   ],
-                  onChanged: (value) => setState(() => appearance['theme'] = value),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => appearance['theme'] = value);
+                    _settings['appearance'] = appearance;
+                    widget.onThemeChanged(value);
+                    _scheduleAutosave();
+                  },
                 ),
               ],
             ),
@@ -459,7 +536,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving...' : 'Apply Settings')),
+        FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving...' : 'Save Now (Autosave Enabled)')),
       ],
     );
   }

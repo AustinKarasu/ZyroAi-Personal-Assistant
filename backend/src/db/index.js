@@ -11,6 +11,7 @@ const FALLBACK_FILE = "chief.db.json";
 const MAX_NOTIFICATIONS = 32;
 const MAX_AUDIT_LOGS = 120;
 const MAX_REPORT_SNAPSHOTS = 24;
+const WORKSPACE_CACHE_TTL_MS = Number(process.env.WORKSPACE_CACHE_TTL_MS || 12000);
 const CLOUD_BUCKET = process.env.SUPABASE_WORKSPACE_BUCKET || "zyroai-workspaces";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
@@ -26,6 +27,7 @@ let initialized = false;
 let storageMode = "local-fallback";
 let cloudBucketEnsured = false;
 let fallbackMigratedToCloud = false;
+const workspaceCache = new Map();
 
 const defaultProfile = () => ({
   name: "ZyroAi User",
@@ -295,6 +297,20 @@ const emitChange = (deviceId, type) => {
   dbEvents.emit("change", { deviceId, type, at: now() });
 };
 
+const getCachedWorkspace = (deviceId) => {
+  const cached = workspaceCache.get(deviceId);
+  if (!cached) return null;
+  if (Date.now() - cached.at > WORKSPACE_CACHE_TTL_MS) {
+    workspaceCache.delete(deviceId);
+    return null;
+  }
+  return normalizeWorkspace(cached.workspace);
+};
+
+const setCachedWorkspace = (deviceId, workspace) => {
+  workspaceCache.set(deviceId, { workspace: normalizeWorkspace(workspace), at: Date.now() });
+};
+
 const ensureInit = async () => {
   if (initialized) return;
   if (POSTGRES_READY) {
@@ -333,20 +349,31 @@ const ensureInit = async () => {
 
 const loadWorkspaceRow = async (deviceId) => {
   await ensureInit();
+  const cached = getCachedWorkspace(deviceId);
+  if (cached) return cached;
+
+  let loaded = null;
   if (storageMode === "local-fallback") {
     const store = readFallbackStore();
-    return store[deviceId] ? normalizeWorkspace(store[deviceId]) : null;
+    loaded = store[deviceId] ? normalizeWorkspace(store[deviceId]) : null;
+    if (loaded) setCachedWorkspace(deviceId, loaded);
+    return loaded;
   }
   if (storageMode === "supabase-cloud") {
-    return loadCloudWorkspaceRow(deviceId);
+    loaded = await loadCloudWorkspaceRow(deviceId);
+    if (loaded) setCachedWorkspace(deviceId, loaded);
+    return loaded;
   }
   const { rows } = await pool.query("select workspace from chief_workspaces where device_id = $1", [deviceId]);
-  return rows[0]?.workspace ? normalizeWorkspace(rows[0].workspace) : null;
+  loaded = rows[0]?.workspace ? normalizeWorkspace(rows[0].workspace) : null;
+  if (loaded) setCachedWorkspace(deviceId, loaded);
+  return loaded;
 };
 
 const saveWorkspaceRow = async (deviceId, workspace) => {
   await ensureInit();
   const normalized = normalizeWorkspace(workspace);
+  setCachedWorkspace(deviceId, normalized);
   if (storageMode === "local-fallback") {
     const store = readFallbackStore();
     store[deviceId] = normalized;
@@ -454,6 +481,12 @@ export const listTasks = async (deviceId) => {
   return [...workspace.tasks].sort((a, b) => b.priority_score - a.priority_score || String(a.due_at || "").localeCompare(String(b.due_at || "")));
 };
 
+export const clearTasks = async (deviceId) =>
+  mutateWorkspace(deviceId, "task_updated", async (workspace) => {
+    workspace.tasks = [];
+    return true;
+  }, "All tasks cleared.");
+
 export const upsertTask = async (deviceId, task) =>
   mutateWorkspace(deviceId, "task_updated", async (workspace) => {
     const id = task.id || randomUUID();
@@ -503,6 +536,19 @@ export const listMemories = async (deviceId) => {
     .map((memory) => ({ id: memory.id, hint: memory.hint, created_at: memory.created_at }));
 };
 
+export const removeMemory = async (deviceId, memoryId) =>
+  mutateWorkspace(deviceId, "memory_added", async (workspace) => {
+    const before = workspace.memories.length;
+    workspace.memories = workspace.memories.filter((memory) => memory.id !== memoryId);
+    return before !== workspace.memories.length;
+  }, `Memory ${memoryId} removed.`);
+
+export const clearMemories = async (deviceId) =>
+  mutateWorkspace(deviceId, "memory_added", async (workspace) => {
+    workspace.memories = [];
+    return true;
+  }, "Memory history cleared.");
+
 export const addCallLog = async (deviceId, payload) =>
   mutateWorkspace(deviceId, "call_logged", async (workspace) => {
     const id = randomUUID();
@@ -531,6 +577,19 @@ export const listCallLogs = async (deviceId) => {
   const workspace = await loadWorkspace(deviceId);
   return [...workspace.call_logs].sort((a, b) => b.created_at.localeCompare(a.created_at));
 };
+
+export const removeCallLog = async (deviceId, logId) =>
+  mutateWorkspace(deviceId, "call_logged", async (workspace) => {
+    const before = workspace.call_logs.length;
+    workspace.call_logs = workspace.call_logs.filter((log) => log.id !== logId);
+    return before !== workspace.call_logs.length;
+  }, `Call log ${logId} removed.`);
+
+export const clearCallLogs = async (deviceId) =>
+  mutateWorkspace(deviceId, "call_logged", async (workspace) => {
+    workspace.call_logs = [];
+    return true;
+  }, "Call history cleared.");
 
 export const listHabits = async (deviceId) => {
   const workspace = await loadWorkspace(deviceId);
@@ -645,6 +704,12 @@ export const listDecisions = async (deviceId) => {
   return [...workspace.decisions].sort((a, b) => b.created_at.localeCompare(a.created_at));
 };
 
+export const clearDecisions = async (deviceId) =>
+  mutateWorkspace(deviceId, "decision_recorded", async (workspace) => {
+    workspace.decisions = [];
+    return true;
+  }, "Decision history cleared.");
+
 export const getSettings = async (deviceId) => {
   const workspace = await loadWorkspace(deviceId);
   return workspace.settings;
@@ -746,6 +811,12 @@ export const logDailySteps = async (deviceId, payload) =>
     insertNotification(workspace, "Footsteps updated", `${nextCount} steps recorded for ${date}.`, nextCount >= goal ? "success" : "info");
     return getTodayStepEntry(workspace, date);
   }, `Steps recorded for ${payload.date || todayKey()}.`);
+
+export const clearStepHistory = async (deviceId) =>
+  mutateWorkspace(deviceId, "steps_logged", async (workspace) => {
+    workspace.step_entries = [];
+    return true;
+  }, "Step history cleared.");
 
 export const logSmartSteps = async (deviceId, payload) =>
   mutateWorkspace(deviceId, "steps_logged", async (workspace) => {

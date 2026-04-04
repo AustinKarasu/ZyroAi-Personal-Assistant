@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_service.dart';
+import 'notification_service.dart';
 
 class MotionTrackingService {
   MotionTrackingService._();
@@ -17,6 +18,7 @@ class MotionTrackingService {
   static const _lastRawStepDateKey = 'motion_last_raw_steps_date';
   static const _dismissedUpdateVersionKey = 'dismissed_update_version';
   static const _walkingSpeedUpperBound = 2.6;
+  static const _goalNotifiedDateKey = 'goal_notified_date';
 
   StreamSubscription<StepCount>? _stepSubscription;
   StreamSubscription<Position>? _positionSubscription;
@@ -94,7 +96,20 @@ class MotionTrackingService {
     if (delta <= 0) return;
     if (_latestSpeedMps > _walkingSpeedUpperBound) return;
 
-    await api.logSteps(delta, source: 'sensor');
+    final summary = await api.logSteps(delta, source: 'sensor');
+    final stepSummary = (summary['summary'] as Map?)?.cast<String, dynamic>() ?? {};
+    final progress = (stepSummary['progress'] as num?)?.toInt() ?? 0;
+    if (progress >= 100) {
+      final notifiedDate = prefs.getString(_goalNotifiedDateKey);
+      if (notifiedDate != today) {
+        await NotificationService.instance.show(
+          id: today.hashCode,
+          title: 'Goal Achieved',
+          body: 'Great work. You reached your daily step goal.',
+        );
+        await prefs.setString(_goalNotifiedDateKey, today);
+      }
+    }
   }
 
   Future<bool> _ensurePermissions() async {

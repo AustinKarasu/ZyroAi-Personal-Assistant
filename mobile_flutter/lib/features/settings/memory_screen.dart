@@ -39,7 +39,20 @@ class _MemoryScreenState extends State<MemoryScreen> {
           const SizedBox(height: 8),
           TextField(controller: _note, decoration: const InputDecoration(labelText: 'Memory note'), maxLines: 2),
           const SizedBox(height: 8),
-          Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: _save, child: const Text('Save'))),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton(
+                onPressed: () async {
+                  await widget.api.clearMemory();
+                  setState(() => _memory = widget.api.fetchMemory());
+                },
+                child: const Text('Clear History'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(onPressed: _save, child: const Text('Save')),
+            ],
+          ),
           const SizedBox(height: 10),
           Expanded(
             child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -51,7 +64,17 @@ class _MemoryScreenState extends State<MemoryScreen> {
                   itemCount: list.length,
                   itemBuilder: (context, i) => Card(
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(title: Text(list[i]['hint'].toString()), subtitle: Text(list[i]['created_at'].toString())),
+                    child: ListTile(
+                      title: Text(list[i]['hint'].toString()),
+                      subtitle: Text(list[i]['created_at'].toString()),
+                      trailing: IconButton(
+                        onPressed: () async {
+                          await widget.api.deleteMemory(list[i]['id'].toString());
+                          setState(() => _memory = widget.api.fetchMemory());
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ),
                   ),
                 );
               },

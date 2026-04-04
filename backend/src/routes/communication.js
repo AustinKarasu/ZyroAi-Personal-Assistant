@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { addCallLog, ensureUser, getSettings, listCallLogs } from "../db/index.js";
+import { addCallLog, clearCallLogs, ensureUser, getSettings, listCallLogs, removeCallLog } from "../db/index.js";
 import { validateBody, schemas } from "../middleware/validation.js";
 import { analyzeTranscript } from "../services/transcript.js";
 
@@ -55,6 +55,19 @@ router.post("/communications/incoming-call", validateBody(schemas.incomingCall),
     urgency: analysis.urgency,
     summary: handledByDnd ? "Chief answered the caller because DND is active." : analysis.summary
   });
+});
+
+router.delete("/communications/:id", async (req, res) => {
+  await ensureUser(req.deviceId);
+  const removed = await removeCallLog(req.deviceId, req.params.id);
+  if (!removed) return res.status(404).json({ error: "Call log not found" });
+  return res.json({ removed: true });
+});
+
+router.delete("/communications", async (req, res) => {
+  await ensureUser(req.deviceId);
+  await clearCallLogs(req.deviceId);
+  return res.json({ cleared: true });
 });
 
 export default router;

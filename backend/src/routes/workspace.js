@@ -6,6 +6,7 @@ import {
   addMeeting,
   authorizeIntegration,
   checkInHabit,
+  clearStepHistory,
   ensureUser,
   getProfile,
   getSettings,
@@ -100,6 +101,12 @@ router.post("/steps/smart", validateBody(schemas.smartSteps), async (req, res) =
   await ensureUser(req.deviceId);
   const summary = await logSmartSteps(req.deviceId, req.validatedBody);
   res.status(201).json({ summary });
+});
+
+router.delete("/steps", async (req, res) => {
+  await ensureUser(req.deviceId);
+  await clearStepHistory(req.deviceId);
+  res.json({ cleared: true });
 });
 
 router.get("/reports", async (req, res) => {

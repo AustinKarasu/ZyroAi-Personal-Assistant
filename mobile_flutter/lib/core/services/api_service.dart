@@ -19,7 +19,7 @@ class ApiService {
   String? _cachedVersion;
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
-  static const _fallbackAppVersion = '1.1.5';
+  static const _fallbackAppVersion = '1.1.7';
   static const _cloudBase = 'https://zyroai-backend.vercel.app';
 
   static String _defaultBaseUrl() {
@@ -117,6 +117,7 @@ class ApiService {
     final future = switch (method) {
       'POST' => http.post(uri, headers: requestHeaders, body: encodedBody),
       'PATCH' => http.patch(uri, headers: requestHeaders, body: encodedBody),
+      'DELETE' => http.delete(uri, headers: requestHeaders),
       _ => http.get(uri, headers: requestHeaders),
     };
     return future.timeout(const Duration(seconds: 15));
@@ -176,17 +177,46 @@ class ApiService {
     return list.map(TaskItem.fromJson).toList();
   }
 
+  Future<Map<String, dynamic>> fetchDashboard() async {
+    return _requestJson('/api/dashboard', error: 'Dashboard load failed');
+  }
+
   Future<void> createTask({required String title, required int urgency, required int importance, required int energyCost}) async {
     await _requestJson('/api/tasks', method: 'POST', body: {'title': title, 'urgency': urgency, 'importance': importance, 'energyCost': energyCost}, error: 'Task creation failed');
+  }
+
+  Future<void> updateTaskStatus(String taskId, String status) async {
+    await _requestJson('/api/tasks/$taskId/status', method: 'PATCH', body: {'status': status}, error: 'Task status update failed');
+  }
+
+  Future<void> clearTasks() async {
+    await _requestJson('/api/tasks', method: 'DELETE', error: 'Task clear failed');
   }
 
   Future<Map<String, dynamic>> runDecision({required String title, required List<Map<String, dynamic>> options}) async {
     return _requestJson('/api/decide', method: 'POST', body: {'title': title, 'options': options}, error: 'Decision engine failed');
   }
 
+  Future<List<Map<String, dynamic>>> fetchDecisionHistory() async {
+    final map = await _requestJson('/api/decide', error: 'Decision history failed');
+    return (map['decisions'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> clearDecisionHistory() async {
+    await _requestJson('/api/decide', method: 'DELETE', error: 'Decision clear failed');
+  }
+
   Future<List<Map<String, dynamic>>> fetchCallLogs() async {
     final map = await _requestJson('/api/communications', error: 'Communications load failed');
     return (map['logs'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> deleteCallLog(String id) async {
+    await _requestJson('/api/communications/$id', method: 'DELETE', error: 'Call delete failed');
+  }
+
+  Future<void> clearCallLogs() async {
+    await _requestJson('/api/communications', method: 'DELETE', error: 'Call history clear failed');
   }
 
   Future<void> submitCallLog(String caller, String transcript) async {
@@ -204,6 +234,14 @@ class ApiService {
   Future<List<Map<String, dynamic>>> fetchMemory() async {
     final map = await _requestJson('/api/memory', error: 'Memory fetch failed');
     return (map['entries'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> deleteMemory(String id) async {
+    await _requestJson('/api/memory/$id', method: 'DELETE', error: 'Memory delete failed');
+  }
+
+  Future<void> clearMemory() async {
+    await _requestJson('/api/memory', method: 'DELETE', error: 'Memory clear failed');
   }
 
   Future<void> addMemory(String hint, String note) async {
@@ -231,12 +269,20 @@ class ApiService {
     return _requestJson('/api/settings', method: 'PATCH', body: patch, error: 'Settings save failed');
   }
 
+  Future<Map<String, dynamic>> setMode(String mode) async {
+    return _requestJson('/api/mode', method: 'POST', body: {'mode': mode}, error: 'Mode update failed');
+  }
+
   Future<Map<String, dynamic>> fetchReport(String period) async {
     return _requestJson('/api/reports?period=$period', error: 'Report fetch failed');
   }
 
   Future<Map<String, dynamic>> fetchSteps() async {
     return _requestJson('/api/steps', error: 'Step fetch failed');
+  }
+
+  Future<void> clearStepHistory() async {
+    await _requestJson('/api/steps', method: 'DELETE', error: 'Step history clear failed');
   }
 
   Future<Map<String, dynamic>> logSteps(int count, {String mode = 'add', String source = 'manual'}) async {

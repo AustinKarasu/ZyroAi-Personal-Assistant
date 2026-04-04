@@ -24,6 +24,7 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
   String _transcript = '';
   String _translation = '';
   bool _listening = false;
+  String _translatorStatus = 'Idle';
 
   @override
   void initState() {
@@ -62,7 +63,10 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
   Future<void> _toggleListening() async {
     if (_listening) {
       await _speech.stop();
-      setState(() => _listening = false);
+      setState(() {
+        _listening = false;
+        _translatorStatus = 'Stopped';
+      });
       return;
     }
 
@@ -73,7 +77,10 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
       return;
     }
 
-    setState(() => _listening = true);
+    setState(() {
+      _listening = true;
+      _translatorStatus = 'Listening...';
+    });
     await _speech.listen(
       localeId: _sourceLocale,
       listenOptions: stt.SpeechListenOptions(partialResults: true),
@@ -86,7 +93,10 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
             sourceLang: _sourceLang,
             targetLang: _targetLang,
           );
-          setState(() => _translation = response['translatedText']?.toString() ?? '');
+          setState(() {
+            _translation = response['translatedText']?.toString() ?? '';
+            _translatorStatus = 'Translated';
+          });
         } catch (_) {}
       },
     );
@@ -99,7 +109,9 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
       child: FutureBuilder<Map<String, dynamic>>(
         future: _future,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: Text('Intelligence failed: ${snapshot.error}'));
+          if (!snapshot.hasData) return const SizedBox.shrink();
           final data = snapshot.data!;
           final workspace = (data['workspace'] as Map).cast<String, dynamic>();
           final report = (data['report'] as Map).cast<String, dynamic>();
@@ -169,28 +181,39 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
                         children: [
                           FilledButton(onPressed: _toggleListening, child: Text(_listening ? 'Stop' : 'Start Listening')),
                           const SizedBox(width: 8),
+                          OutlinedButton(onPressed: _refresh, child: const Text('Refresh Data')),
+                          const SizedBox(width: 8),
                           OutlinedButton(
                             onPressed: () => setState(() {
                               _transcript = '';
                               _translation = '';
+                              _translatorStatus = 'Cleared';
                             }),
                             child: const Text('Clear'),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: TextEditingController(text: _transcript),
-                        maxLines: 3,
-                        readOnly: true,
-                        decoration: const InputDecoration(labelText: 'Detected speech'),
+                      Text('Status: $_translatorStatus'),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(_transcript.isEmpty ? 'Detected speech will appear here' : _transcript),
                       ),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: TextEditingController(text: _translation),
-                        maxLines: 3,
-                        readOnly: true,
-                        decoration: const InputDecoration(labelText: 'Translated text'),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(_translation.isEmpty ? 'Translated text will appear here' : _translation),
                       ),
                     ],
                   ),
@@ -231,11 +254,25 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
                       const SizedBox(height: 8),
                       Text('${steps['count']} / ${steps['goal']} today (${steps['progress']}%)'),
                       const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        minHeight: 8,
+                        value: ((steps['progress'] ?? 0) as num).toDouble() / 100,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(child: TextField(controller: _stepCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Add steps'))),
                           const SizedBox(width: 8),
                           FilledButton(onPressed: _addSteps, child: const Text('Log')),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () async {
+                              await widget.api.clearStepHistory();
+                              await _refresh();
+                            },
+                            child: const Text('Clear'),
+                          ),
                         ],
                       ),
                     ],
@@ -265,6 +302,10 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text('Focus score ${report['metrics']['focusScore']}'),
+                      const SizedBox(height: 6),
+                      Text('Task completion ${report['metrics']['taskCompletionRate']}%'),
+                      const SizedBox(height: 6),
+                      Text('Urgent communication ${report['metrics']['urgentCommunicationRate']}%'),
                       const SizedBox(height: 8),
                       ...highlights.map((item) => Padding(
                         padding: const EdgeInsets.only(bottom: 6),
