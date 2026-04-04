@@ -378,8 +378,15 @@ const loadWorkspaceRow = async (deviceId) => {
     if (loaded) setCachedWorkspace(deviceId, loaded);
     return loaded;
   }
-  const { rows } = await pool.query("select workspace from chief_workspaces where device_id = $1", [deviceId]);
-  loaded = rows[0]?.workspace ? normalizeWorkspace(rows[0].workspace) : null;
+  try {
+    const { rows } = await pool.query("select workspace from chief_workspaces where device_id = $1", [deviceId]);
+    loaded = rows[0]?.workspace ? normalizeWorkspace(rows[0].workspace) : null;
+  } catch (error) {
+    console.warn(`Postgres load degraded to local fallback: ${error.code || error.message}`);
+    storageMode = "local-fallback";
+    const store = readFallbackStore();
+    loaded = store[deviceId] ? normalizeWorkspace(store[deviceId]) : null;
+  }
   if (loaded) setCachedWorkspace(deviceId, loaded);
   return loaded;
 };
@@ -406,15 +413,23 @@ const saveWorkspaceRow = async (deviceId, workspace) => {
     }
     return;
   }
-  await pool.query(
-    `
-      insert into chief_workspaces (device_id, workspace, created_at, updated_at)
-      values ($1, $2::jsonb, now(), now())
-      on conflict (device_id)
-      do update set workspace = excluded.workspace, updated_at = now()
-    `,
-    [deviceId, JSON.stringify(normalized)]
-  );
+  try {
+    await pool.query(
+      `
+        insert into chief_workspaces (device_id, workspace, created_at, updated_at)
+        values ($1, $2::jsonb, now(), now())
+        on conflict (device_id)
+        do update set workspace = excluded.workspace, updated_at = now()
+      `,
+      [deviceId, JSON.stringify(normalized)]
+    );
+  } catch (error) {
+    console.warn(`Postgres save degraded to local fallback: ${error.code || error.message}`);
+    storageMode = "local-fallback";
+    const store = readFallbackStore();
+    store[deviceId] = normalized;
+    writeFallbackStore(store);
+  }
 };
 
 const integrationDisplayNames = {
