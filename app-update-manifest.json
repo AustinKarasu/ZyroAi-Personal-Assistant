@@ -4,7 +4,7 @@
     "latestVersion":  "1.1.7",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://raw.githubusercontent.com/AustinKarasu/ZyroAi-Personal-Assistant/main/apk/ZyroAi-v1.1.7.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.7/ZyroAi-v1.1.7.apk",
     "releaseNotes":  [
                          "Upgraded mobile UI with premium dashboard and improved navigation experience",
                          "Communication center now supports delete call log and clear history with real API endpoints",
