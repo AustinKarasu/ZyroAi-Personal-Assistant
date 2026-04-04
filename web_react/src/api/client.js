@@ -9,7 +9,7 @@ const SECONDARY_API_BASE = localHosts.has(browserHost)
   ? (import.meta.env.VITE_API_BASE || DEFAULT_CLOUD_API_BASE)
   : null;
 const DEVICE_KEY = "chief_device_id";
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.11";
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.12";
 const WORKSPACE_CACHE_KEY = "zyroai_workspace_cache";
 const storedDevice = localStorage.getItem(DEVICE_KEY);
 const DEVICE_ID = storedDevice || `web-${crypto.randomUUID()}`;
@@ -267,4 +267,5 @@ export function chatWithAssistant(message) {
 }
 
 export const appVersion = APP_VERSION;
+
 

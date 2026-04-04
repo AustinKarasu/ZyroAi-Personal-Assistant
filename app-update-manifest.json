@@ -1,15 +1,14 @@
 {
     "appName":  "ZyroAi",
-    "currentVersion":  "1.1.11",
-    "latestVersion":  "1.1.11",
+    "currentVersion":  "1.1.12",
+    "latestVersion":  "1.1.12",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.11/ZyroAi-v1.1.11.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.12/ZyroAi-v1.1.12.apk",
     "releaseNotes":  [
-                         "Added in-app Android update download and installer flow with no browser step",
-                         "Improved release detection by checking the dedicated update status endpoint on launch and resume",
-                         "Defaulted update manifest loading to the GitHub-hosted manifest for live release checks",
-                         "Kept the updater fallback path intact for non-Android surfaces",
-                         "Bundled the latest workspace, communication, assistant, and integration fixes into the release"
+                         "Fixed backend startup crashes caused by BOM-encoded JSON manifest and fallback store parsing",
+                         "Made auto step tracking work from activity sensors without requiring location just to count steps",
+                         "Kept vehicle filtering when location is enabled so bus and bike travel stays excluded",
+                         "Retained in-app Android updater flow and live release checks"
                      ]
 }

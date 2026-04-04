@@ -41,6 +41,8 @@ let cloudBucketEnsured = false;
 let fallbackMigratedToCloud = false;
 const workspaceCache = new Map();
 
+const stripBom = (value) => value.replace(/^\uFEFF/, "");
+
 const defaultProfile = () => ({
   name: "ZyroAi User",
   title: "Personal Command Center",
@@ -120,7 +122,7 @@ const readFallbackStore = () => {
   if (!existsSync(FALLBACK_FILE)) {
     return {};
   }
-  return JSON.parse(readFileSync(FALLBACK_FILE, "utf8"));
+  return JSON.parse(stripBom(readFileSync(FALLBACK_FILE, "utf8")));
 };
 
 const writeFallbackStore = (store) => {
@@ -145,7 +147,7 @@ const fetchJson = async (url, options = {}) => {
   let data = null;
   if (text) {
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(stripBom(text));
     } catch {
       data = text;
     }
@@ -1106,6 +1108,8 @@ export const completeIntegrationAuth = async (deviceId, platform, payload) =>
     );
     return workspace.settings.integrations[platform];
   }, `${integrationDisplayNames[platform] || platform} authorized.`);
+
+
 
 
 

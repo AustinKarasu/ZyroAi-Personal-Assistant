@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 
@@ -51,34 +51,44 @@ class MotionTrackingService {
       final settings = (settingsRes['settings'] as Map).cast<String, dynamic>();
       final automation = (settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
       final permissions = (settings['permissions'] as Map?)?.cast<String, dynamic>() ?? {};
-      final enabled = automation['autoStepTracking'] == true && permissions['location'] == true && permissions['activity'] == true;
+      final autoTrackingEnabled = automation['autoStepTracking'] == true;
+      final activityEnabled = permissions['activity'] == true;
+      final locationEnabled = permissions['location'] == true;
 
-      if (!enabled) {
+      if (!autoTrackingEnabled || !activityEnabled) {
         await _stopStreams();
         return;
       }
 
-      final granted = await _ensurePermissions();
+      final granted = await _ensurePermissions(requireLocation: locationEnabled);
       if (!granted) {
         await _stopStreams();
         return;
       }
 
-      _positionSubscription ??= Geolocator.getPositionStream(
-        locationSettings: Platform.isAndroid
-            ? AndroidSettings(
-                accuracy: LocationAccuracy.bestForNavigation,
-                distanceFilter: 8,
-                intervalDuration: const Duration(seconds: 8),
-              )
-            : const LocationSettings(
-                accuracy: LocationAccuracy.best,
-                distanceFilter: 8,
-              ),
-      ).listen((position) async {
-        _latestSpeedMps = position.speed.isFinite && position.speed >= 0 ? position.speed : 0;
-        await _handlePositionFallback(position);
-      });
+      if (locationEnabled) {
+        _positionSubscription ??= Geolocator.getPositionStream(
+          locationSettings: Platform.isAndroid
+              ? AndroidSettings(
+                  accuracy: LocationAccuracy.bestForNavigation,
+                  distanceFilter: 8,
+                  intervalDuration: const Duration(seconds: 8),
+                )
+              : const LocationSettings(
+                  accuracy: LocationAccuracy.best,
+                  distanceFilter: 8,
+                ),
+        ).listen((position) async {
+          _latestSpeedMps = position.speed.isFinite && position.speed >= 0 ? position.speed : 0;
+          await _handlePositionFallback(position);
+        });
+      } else {
+        await _positionSubscription?.cancel();
+        _positionSubscription = null;
+        _latestSpeedMps = 0;
+        _lastTrackedPosition = null;
+        _lastTrackedAt = null;
+      }
 
       _pedestrianSubscription ??= Pedometer.pedestrianStatusStream.listen(
         (status) {
@@ -186,15 +196,20 @@ class MotionTrackingService {
     await prefs.setString(_goalNotifiedDateKey, today);
   }
 
-  Future<bool> _ensurePermissions() async {
-    var locationPermission = await Geolocator.checkPermission();
-    if (locationPermission == LocationPermission.denied || locationPermission == LocationPermission.deniedForever) {
-      locationPermission = await Geolocator.requestPermission();
+  Future<bool> _ensurePermissions({required bool requireLocation}) async {
+    LocationPermission locationPermission = LocationPermission.denied;
+    if (requireLocation) {
+      locationPermission = await Geolocator.checkPermission();
+      if (locationPermission == LocationPermission.denied || locationPermission == LocationPermission.deniedForever) {
+        locationPermission = await Geolocator.requestPermission();
+      }
     }
 
     final activityPermission = await Permission.activityRecognition.request();
 
-    final locationGranted = locationPermission == LocationPermission.always || locationPermission == LocationPermission.whileInUse;
+    final locationGranted = !requireLocation ||
+        locationPermission == LocationPermission.always ||
+        locationPermission == LocationPermission.whileInUse;
     return locationGranted && activityPermission.isGranted;
   }
 
@@ -205,6 +220,7 @@ class MotionTrackingService {
     _stepSubscription = null;
     _pedestrianSubscription = null;
     _positionSubscription = null;
+    _latestSpeedMps = 0;
     _latestPedestrianStatus = 'unknown';
     _lastTrackedPosition = null;
     _lastTrackedAt = null;

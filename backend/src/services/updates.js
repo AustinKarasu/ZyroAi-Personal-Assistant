@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 const MANIFEST_FILE = "../app-update-manifest.json";
 const DEFAULT_REMOTE_MANIFEST =
   "https://raw.githubusercontent.com/AustinKarasu/ZyroAi-Personal-Assistant/main/app-update-manifest.json";
+const stripBom = (value) => value.replace(/^\uFEFF/, "");
 
 const parseVersion = (version) => version.split(".").map((segment) => Number(segment) || 0);
 
@@ -38,7 +39,10 @@ const readLocalManifest = () => {
     return defaultManifest;
   }
 
-  return { ...defaultManifest, ...JSON.parse(readFileSync(MANIFEST_FILE, "utf8")) };
+  return {
+    ...defaultManifest,
+    ...JSON.parse(stripBom(readFileSync(MANIFEST_FILE, "utf8")))
+  };
 };
 
 const resolveManifestUrl = () => {

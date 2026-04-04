@@ -98,7 +98,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
   Future<void> _handleInstalledVersionChange() async {
     final prefs = await SharedPreferences.getInstance();
     final previousVersion = prefs.getString(_installedVersionKey);
-    String currentVersion = '1.1.11';
+    String currentVersion = '1.1.12';
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
@@ -364,6 +364,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
     );
   }
 }
+
 
 
 

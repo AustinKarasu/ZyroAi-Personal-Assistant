@@ -19,7 +19,7 @@ class ApiService {
   String? _cachedVersion;
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
-  static const _fallbackAppVersion = '1.1.11';
+  static const _fallbackAppVersion = '1.1.12';
   static const _cloudBase = 'https://zyroai-backend.vercel.app';
 
   static String _defaultBaseUrl() {
@@ -399,6 +399,7 @@ class ApiService {
   }
 
 }
+
 
 
 
