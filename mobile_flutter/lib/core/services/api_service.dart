@@ -19,7 +19,7 @@ class ApiService {
   String? _cachedVersion;
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
-  static const _fallbackAppVersion = '1.1.7';
+  static const _fallbackAppVersion = '1.1.8';
   static const _cloudBase = 'https://zyroai-backend.vercel.app';
 
   static String _defaultBaseUrl() {
@@ -231,6 +231,11 @@ class ApiService {
     return _requestJson('/api/insights', error: 'Insights failed');
   }
 
+  Future<List<Map<String, dynamic>>> fetchAuditLogs() async {
+    final map = await _requestJson('/api/audit-logs', error: 'Audit log fetch failed');
+    return (map['logs'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
   Future<List<Map<String, dynamic>>> fetchMemory() async {
     final map = await _requestJson('/api/memory', error: 'Memory fetch failed');
     return (map['entries'] as List<dynamic>).cast<Map<String, dynamic>>();
@@ -269,6 +274,18 @@ class ApiService {
     return _requestJson('/api/settings', method: 'PATCH', body: patch, error: 'Settings save failed');
   }
 
+  Future<Map<String, dynamic>> authorizeIntegration(
+    String platform, {
+    List<String> permissions = const ['read_messages', 'send_messages'],
+  }) async {
+    return _requestJson(
+      '/api/integrations/$platform/authorize',
+      method: 'POST',
+      body: {'permissions': permissions},
+      error: 'Integration authorization failed',
+    );
+  }
+
   Future<Map<String, dynamic>> setMode(String mode) async {
     return _requestJson('/api/mode', method: 'POST', body: {'mode': mode}, error: 'Mode update failed');
   }
@@ -287,6 +304,25 @@ class ApiService {
 
   Future<Map<String, dynamic>> logSteps(int count, {String mode = 'add', String source = 'manual'}) async {
     return _requestJson('/api/steps', method: 'POST', body: {'count': count, 'mode': mode, 'source': source}, error: 'Step logging failed');
+  }
+
+  Future<Map<String, dynamic>> logSmartSteps({
+    required double distanceMeters,
+    required int durationSeconds,
+    double? speedMps,
+    String activityHint = 'walking',
+  }) async {
+    return _requestJson(
+      '/api/steps/smart',
+      method: 'POST',
+      body: {
+        'distance_meters': distanceMeters,
+        'duration_seconds': durationSeconds,
+        if (speedMps != null) 'speed_mps': speedMps,
+        'activity_hint': activityHint,
+      },
+      error: 'Smart step logging failed',
+    );
   }
 
   Future<Map<String, dynamic>> fetchWeather({double? lat, double? lon}) async {

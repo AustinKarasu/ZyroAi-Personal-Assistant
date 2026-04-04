@@ -85,6 +85,30 @@ export const detectAssistantAction = (message) => {
     return { type: "settings", label: "DND disabled", patch: { automation: { dndMode: false } } };
   }
 
+  if (/(turn on|enable|activate).*(sms|message).*(auto|reply|autopilot)/i.test(text)) {
+    return { type: "settings", label: "Message autopilot enabled", patch: { automation: { smsAutoReply: true } } };
+  }
+
+  if (/(turn off|disable|deactivate).*(sms|message).*(auto|reply|autopilot)/i.test(text)) {
+    return { type: "settings", label: "Message autopilot disabled", patch: { automation: { smsAutoReply: false } } };
+  }
+
+  if (/(turn on|enable|activate).*(step|walking).*(tracking|tracker)/i.test(text)) {
+    return {
+      type: "settings",
+      label: "Smart step tracking enabled",
+      patch: { automation: { autoStepTracking: true } }
+    };
+  }
+
+  if (/(turn off|disable|deactivate).*(step|walking).*(tracking|tracker)/i.test(text)) {
+    return {
+      type: "settings",
+      label: "Smart step tracking disabled",
+      patch: { automation: { autoStepTracking: false } }
+    };
+  }
+
   if (/(deep work|focus mode)/i.test(lower)) {
     return { type: "mode", label: "Deep Work mode enabled", mode: "Deep Work" };
   }

@@ -1,15 +1,15 @@
 {
     "appName":  "ZyroAi",
-    "currentVersion":  "1.1.7",
-    "latestVersion":  "1.1.7",
+    "currentVersion":  "1.1.8",
+    "latestVersion":  "1.1.8",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.7/ZyroAi-v1.1.7.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.8/ZyroAi-v1.1.8.apk",
     "releaseNotes":  [
-                         "Upgraded mobile UI with premium dashboard and improved navigation experience",
-                         "Communication center now supports delete call log and clear history with real API endpoints",
-                         "Settings now autosave and theme switching applies live across the app",
-                         "Added page-level clear-history controls for tasks, memory, decisions, and step history",
-                         "Improved backend responsiveness with compression and short-lived workspace caching"
+                         "Added a dedicated AI Chief page with real assistant chat and action suggestions",
+                         "Upgraded Communications, Decision, and Memory into premium mobile control surfaces",
+                         "Expanded automation controls for DND, call handling, and message autopilot",
+                         "Hardened footstep tracking with location-based fallback when raw step sensors are unreliable",
+                         "Refined mobile navigation and premium UI across the drawer and page shells"
                      ]
 }

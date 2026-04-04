@@ -1,5 +1,5 @@
-import 'dart:io' show Platform;
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -24,13 +24,16 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   bool _saving = false;
+  String _autosaveStatus = 'Everything saved';
   Map<String, dynamic> _settings = {};
   Map<String, dynamic> _profile = {};
+  List<Map<String, dynamic>> _auditLogs = [];
   Map<String, String> _deviceInfo = {};
   Map<String, dynamic> _callScreening = {'supported': false, 'roleHeld': false};
   final _nameCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
   final _goalCtrl = TextEditingController();
+  final _cityCtrl = TextEditingController();
   final _apiBaseUrlCtrl = TextEditingController();
   Timer? _autosaveTimer;
 
@@ -40,10 +43,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    _nameCtrl.dispose();
+    _titleCtrl.dispose();
+    _goalCtrl.dispose();
+    _cityCtrl.dispose();
+    _apiBaseUrlCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     try {
       final profileRes = await widget.api.fetchProfile();
       final settingsRes = await widget.api.fetchSettings();
+      final auditLogs = await widget.api.fetchAuditLogs();
       final apiBaseUrl = await widget.api.loadApiBaseUrl();
       final profile = (profileRes['profile'] as Map).cast<String, dynamic>();
       final settings = (settingsRes['settings'] as Map).cast<String, dynamic>();
@@ -55,11 +70,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _nameCtrl.text = profile['name']?.toString() ?? '';
       _titleCtrl.text = profile['title']?.toString() ?? '';
       _goalCtrl.text = (profile['daily_step_goal'] ?? 8000).toString();
+      _cityCtrl.text = profile['city']?.toString() ?? '';
       _apiBaseUrlCtrl.text = apiBaseUrl;
 
+      if (!mounted) return;
       setState(() {
         _profile = profile;
         _settings = settings;
+        _auditLogs = auditLogs;
         _deviceInfo = deviceInfo;
         _callScreening = callScreening;
         _loading = false;
@@ -67,18 +85,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings loading fallback active.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Settings loading fallback active.')),
+      );
     }
-  }
-
-  @override
-  void dispose() {
-    _autosaveTimer?.cancel();
-    _nameCtrl.dispose();
-    _titleCtrl.dispose();
-    _goalCtrl.dispose();
-    _apiBaseUrlCtrl.dispose();
-    super.dispose();
   }
 
   Future<Map<String, String>> _loadDeviceInfo() async {
@@ -104,51 +114,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return base.data.map((key, value) => MapEntry(key, '$value'));
   }
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    if (kDebugMode) {
-      await widget.api.saveApiBaseUrl(_apiBaseUrlCtrl.text.trim());
-    }
-    await widget.api.saveProfile({
-      'name': _nameCtrl.text.trim(),
-      'title': _titleCtrl.text.trim(),
-      'daily_step_goal': int.tryParse(_goalCtrl.text) ?? 8000,
-      'language': _profile['language'] ?? 'en',
+  Future<void> _save({bool showToast = true, bool syncNative = true, bool refreshMotion = true}) async {
+    setState(() {
+      _saving = true;
+      _autosaveStatus = 'Saving changes...';
     });
-    await widget.api.saveSettings(_settings);
-    final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
-    if (Platform.isAndroid) {
-      await NativeTelecomService.syncCallAutomation(
-        dndMode: automation['dndMode'] == true,
-        callAutoReply: automation['callAutoReply'] != false,
-      );
-      _callScreening = await NativeTelecomService.getCallScreeningStatus();
+    try {
+      if (kDebugMode) {
+        await widget.api.saveApiBaseUrl(_apiBaseUrlCtrl.text.trim());
+      }
+
+      await widget.api.saveProfile({
+        'name': _nameCtrl.text.trim(),
+        'title': _titleCtrl.text.trim(),
+        'city': _cityCtrl.text.trim(),
+        'daily_step_goal': int.tryParse(_goalCtrl.text) ?? 8000,
+        'language': _profile['language'] ?? 'en',
+      });
+      await widget.api.saveSettings(_settings);
+
+      final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
+      if (syncNative && Platform.isAndroid) {
+        await NativeTelecomService.syncCallAutomation(
+          dndMode: automation['dndMode'] == true,
+          callAutoReply: automation['callAutoReply'] != false,
+        );
+        _callScreening = await NativeTelecomService.getCallScreeningStatus();
+      }
+
+      if (refreshMotion) {
+        await MotionTrackingService.instance.refreshConfig();
+      }
+
+      _auditLogs = await widget.api.fetchAuditLogs();
+      if (!mounted) return;
+      setState(() => _autosaveStatus = 'Everything saved');
+      if (showToast) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _autosaveStatus = 'Save failed, retrying on next change');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-    await MotionTrackingService.instance.refreshConfig();
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
   }
 
   void _scheduleAutosave({bool syncNative = false, bool refreshMotion = false}) {
     _autosaveTimer?.cancel();
+    setState(() => _autosaveStatus = 'Unsaved changes');
     _autosaveTimer = Timer(const Duration(milliseconds: 450), () async {
       if (!mounted) return;
-      try {
-        await widget.api.saveSettings(_settings);
-        if (syncNative && Platform.isAndroid) {
-          final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
-          await NativeTelecomService.syncCallAutomation(
-            dndMode: automation['dndMode'] == true,
-            callAutoReply: automation['callAutoReply'] != false,
-          );
-          _callScreening = await NativeTelecomService.getCallScreeningStatus();
-        }
-        if (refreshMotion) {
-          await MotionTrackingService.instance.refreshConfig();
-        }
-      } catch (_) {}
-      if (mounted) setState(() {});
+      await _save(showToast: false, syncNative: syncNative, refreshMotion: refreshMotion);
     });
   }
 
@@ -199,21 +216,555 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _sectionTitle(String title, String subtitle) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final appearance = (_settings['appearance'] as Map?)?.cast<String, dynamic>() ?? {};
+    final assistant = (_settings['assistant'] as Map?)?.cast<String, dynamic>() ?? {};
+    final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
+    final permissions = (_settings['permissions'] as Map?)?.cast<String, dynamic>() ?? {};
+    final data = (_settings['data'] as Map?)?.cast<String, dynamic>() ?? {};
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF171717), Color(0xFF0F1620), Color(0xFF0A0A0A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset(
+                  'assets/images/zyroai-logo.jpg',
+                  width: 58,
+                  height: 58,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('ZyroAi Settings', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Profile, appearance, automation, permissions, data policy, and device trust settings.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _saving ? Icons.sync : Icons.check_circle_outline,
+                size: 18,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_autosaveStatus)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Profile',
+          subtitle: 'Identity, language, location, and personal goals',
+          child: Column(
+            children: [
+              TextField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(labelText: 'Name'),
+                onChanged: (value) {
+                  _profile['name'] = value;
+                  _scheduleAutosave();
+                },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(labelText: 'Title'),
+                onChanged: (value) {
+                  _profile['title'] = value;
+                  _scheduleAutosave();
+                },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _cityCtrl,
+                decoration: const InputDecoration(labelText: 'City'),
+                onChanged: (value) {
+                  _profile['city'] = value;
+                  _scheduleAutosave();
+                },
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _goalCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Daily step goal'),
+                onChanged: (_) => _scheduleAutosave(refreshMotion: true),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: (_profile['language'] ?? 'en').toString(),
+                decoration: const InputDecoration(labelText: 'Language'),
+                items: const [
+                  DropdownMenuItem(value: 'en', child: Text('English')),
+                  DropdownMenuItem(value: 'hi', child: Text('Hindi')),
+                  DropdownMenuItem(value: 'es', child: Text('Spanish')),
+                  DropdownMenuItem(value: 'ar', child: Text('Arabic')),
+                ],
+                onChanged: (value) {
+                  setState(() => _profile['language'] = value);
+                  _scheduleAutosave();
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Automation',
+          subtitle: 'How ZyroAi behaves across focus, calls, and movement',
+          child: Column(
+            children: [
+              _toggleTile(
+                title: 'DND mode',
+                subtitle: 'Arm the busy shield and call triage flow.',
+                value: automation['dndMode'] == true,
+                onChanged: (value) => setState(() {
+                  automation['dndMode'] = value;
+                  _settings['automation'] = automation;
+                  _scheduleAutosave(syncNative: true);
+                }),
+              ),
+              _toggleTile(
+                title: 'Call auto-reply',
+                subtitle: 'Allow ZyroAi to block supported incoming calls and log the interruption.',
+                value: automation['callAutoReply'] != false,
+                onChanged: (value) => setState(() {
+                  automation['callAutoReply'] = value;
+                  _settings['automation'] = automation;
+                  _scheduleAutosave(syncNative: true);
+                }),
+              ),
+              _toggleTile(
+                title: 'Message autopilot',
+                subtitle: 'Generate context-aware busy replies while you focus.',
+                value: automation['smsAutoReply'] != false,
+                onChanged: (value) => setState(() {
+                  automation['smsAutoReply'] = value;
+                  _settings['automation'] = automation;
+                  _scheduleAutosave();
+                }),
+              ),
+              _toggleTile(
+                title: 'Smart step tracking',
+                subtitle: 'Use the step sensor plus movement filtering to ignore vehicle travel.',
+                value: automation['autoStepTracking'] == true,
+                onChanged: (value) => setState(() {
+                  automation['autoStepTracking'] = value;
+                  _settings['automation'] = automation;
+                  _scheduleAutosave(refreshMotion: true);
+                }),
+              ),
+              _toggleTile(
+                title: 'Wellbeing guard',
+                subtitle: 'Keep reminders and healthy nudges active during the day.',
+                value: automation['wellbeingGuard'] != false,
+                onChanged: (value) => setState(() {
+                  automation['wellbeingGuard'] = value;
+                  _settings['automation'] = automation;
+                  _scheduleAutosave();
+                }),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Assistant',
+          subtitle: 'Control persona, reporting cadence, and live behavior',
+          child: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: (assistant['voiceStyle'] ?? 'calm').toString(),
+                decoration: const InputDecoration(labelText: 'Voice style'),
+                items: const [
+                  DropdownMenuItem(value: 'calm', child: Text('Calm')),
+                  DropdownMenuItem(value: 'direct', child: Text('Direct')),
+                  DropdownMenuItem(value: 'operator', child: Text('Operator')),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => assistant['voiceStyle'] = value);
+                  _settings['assistant'] = assistant;
+                  _scheduleAutosave();
+                },
+              ),
+              const SizedBox(height: 10),
+              _toggleTile(
+                title: 'Automatic decision support',
+                subtitle: 'Let the assistant weigh options more proactively.',
+                value: assistant['autoDecisionSupport'] != false,
+                onChanged: (value) => setState(() {
+                  assistant['autoDecisionSupport'] = value;
+                  _settings['assistant'] = assistant;
+                  _scheduleAutosave();
+                }),
+              ),
+              _toggleTile(
+                title: 'Weekly reports',
+                subtitle: 'Keep the weekly executive summary active.',
+                value: assistant['weeklyReports'] != false,
+                onChanged: (value) => setState(() {
+                  assistant['weeklyReports'] = value;
+                  _settings['assistant'] = assistant;
+                  _scheduleAutosave();
+                }),
+              ),
+              _toggleTile(
+                title: 'Monthly reports',
+                subtitle: 'Maintain monthly performance snapshots.',
+                value: assistant['monthlyReports'] != false,
+                onChanged: (value) => setState(() {
+                  assistant['monthlyReports'] = value;
+                  _settings['assistant'] = assistant;
+                  _scheduleAutosave();
+                }),
+              ),
+              _toggleTile(
+                title: 'Yearly reports',
+                subtitle: 'Preserve annual review snapshots and trends.',
+                value: assistant['yearlyReports'] != false,
+                onChanged: (value) => setState(() {
+                  assistant['yearlyReports'] = value;
+                  _settings['assistant'] = assistant;
+                  _scheduleAutosave();
+                }),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Permissions',
+          subtitle: 'Request actual device access and keep permission state visible',
+          child: Column(
+            children: [
+              _toggleTile(
+                title: 'Location permission',
+                subtitle: 'Needed for weather refresh and live movement tracking.',
+                value: permissions['location'] == true,
+                onChanged: (value) => value
+                    ? _requestPermission('location')
+                    : setState(() {
+                        permissions['location'] = false;
+                        _settings['permissions'] = permissions;
+                        _scheduleAutosave(refreshMotion: true);
+                      }),
+              ),
+              _toggleTile(
+                title: 'Activity permission',
+                subtitle: 'Needed for step sensor and smart walking detection.',
+                value: permissions['activity'] == true,
+                onChanged: (value) => value
+                    ? _requestPermission('activity')
+                    : setState(() {
+                        permissions['activity'] = false;
+                        _settings['permissions'] = permissions;
+                        _scheduleAutosave(refreshMotion: true);
+                      }),
+              ),
+              _toggleTile(
+                title: 'Notifications permission',
+                subtitle: 'Needed for milestone alerts and reminders.',
+                value: permissions['notifications'] == true,
+                onChanged: (value) => value
+                    ? _requestPermission('notifications')
+                    : setState(() {
+                        permissions['notifications'] = false;
+                        _settings['permissions'] = permissions;
+                        _scheduleAutosave();
+                      }),
+              ),
+              _toggleTile(
+                title: 'Microphone permission',
+                subtitle: 'Needed for voice assistant and speech translation.',
+                value: permissions['microphone'] == true,
+                onChanged: (value) => value
+                    ? _requestPermission('microphone')
+                    : setState(() {
+                        permissions['microphone'] = false;
+                        _settings['permissions'] = permissions;
+                        _scheduleAutosave();
+                      }),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Appearance',
+          subtitle: 'Theme and visual density for the mobile surface',
+          child: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: (appearance['theme'] ?? 'black-gold').toString(),
+                decoration: const InputDecoration(labelText: 'Theme'),
+                items: const [
+                  DropdownMenuItem(value: 'black-gold', child: Text('Black Gold')),
+                  DropdownMenuItem(value: 'black-ice', child: Text('Black Ice')),
+                  DropdownMenuItem(value: 'obsidian-blue', child: Text('Obsidian Blue')),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => appearance['theme'] = value);
+                  _settings['appearance'] = appearance;
+                  widget.onThemeChanged(value);
+                  _scheduleAutosave();
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: (appearance['density'] ?? 'comfortable').toString(),
+                decoration: const InputDecoration(labelText: 'Density'),
+                items: const [
+                  DropdownMenuItem(value: 'comfortable', child: Text('Comfortable')),
+                  DropdownMenuItem(value: 'compact', child: Text('Compact')),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => appearance['density'] = value);
+                  _settings['appearance'] = appearance;
+                  _scheduleAutosave();
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Data and Sync',
+          subtitle: 'Cloud behavior and offline strategy',
+          child: Column(
+            children: [
+              _toggleTile(
+                title: 'Realtime sync',
+                subtitle: 'Keep workspace data synchronized live when the backend is reachable.',
+                value: data['realtimeSync'] != false,
+                onChanged: (value) => setState(() {
+                  data['realtimeSync'] = value;
+                  _settings['data'] = data;
+                  _scheduleAutosave();
+                }),
+              ),
+              _toggleTile(
+                title: 'Offline ready',
+                subtitle: 'Keep local cache behavior available when the network is down.',
+                value: data['offlineReady'] != false,
+                onChanged: (value) => setState(() {
+                  data['offlineReady'] = value;
+                  _settings['data'] = data;
+                  _scheduleAutosave();
+                }),
+              ),
+              _toggleTile(
+                title: 'Auto sync when online',
+                subtitle: 'Push local updates back to the cloud path as connectivity returns.',
+                value: data['autoSyncWhenOnline'] != false,
+                onChanged: (value) => setState(() {
+                  data['autoSyncWhenOnline'] = value;
+                  _settings['data'] = data;
+                  _scheduleAutosave();
+                }),
+              ),
+              if (kDebugMode)
+                TextField(
+                  controller: _apiBaseUrlCtrl,
+                  decoration: const InputDecoration(labelText: 'Backend API base URL (Debug)'),
+                  onChanged: (_) => _scheduleAutosave(syncNative: false, refreshMotion: false),
+                )
+              else
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Backend'),
+                  subtitle: Text('Connected to the secure ZyroAi cloud endpoint'),
+                ),
+            ],
+          ),
+        ),
+        if (Platform.isAndroid) ...[
+          const SizedBox(height: 12),
+          _sectionCard(
+            context,
+            title: 'Call Screening',
+            subtitle: 'Native Android telecom role and DND screening state',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _callScreening['supported'] == true
+                      ? (_callScreening['roleHeld'] == true
+                          ? 'Native call-screening role is active.'
+                          : 'Native call-screening role is not granted yet.')
+                      : 'This Android version does not support the native screening role.',
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: _callScreening['supported'] == true ? _requestCallScreeningRole : null,
+                  child: Text(_callScreening['roleHeld'] == true ? 'Role Active' : 'Enable Call Screening'),
+                ),
+              ],
+            ),
+          ),
         ],
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Audit Logs',
+          subtitle: '${_auditLogs.length} recent configuration and automation events',
+          child: _auditLogs.isEmpty
+              ? _emptyState('Audit events will appear here as you use the app.')
+              : Column(
+                  children: _auditLogs.take(8).map((entry) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(entry['action']?.toString() ?? 'action', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 4),
+                          Text(entry['detail']?.toString() ?? ''),
+                          const SizedBox(height: 4),
+                          Text(
+                            entry['created_at']?.toString() ?? '',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+        const SizedBox(height: 12),
+        _sectionCard(
+          context,
+          title: 'Device Info',
+          subtitle: 'Live device information available to ZyroAi',
+          child: Column(
+            children: _deviceInfo.entries.map((entry) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(flex: 6, child: Text(entry.value)),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Support', style: TextStyle(fontWeight: FontWeight.w800)),
+                      SizedBox(height: 4),
+                      Text('Need help with updates, setup, or app behavior?'),
+                    ],
+                  ),
+                ),
+                TextButton(onPressed: _openSupport, child: const Text('Email Support')),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: _saving ? null : () => _save(showToast: true),
+          child: Text(_saving ? 'Saving...' : 'Save Now'),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 14),
+            child,
+          ],
+        ),
       ),
     );
   }
 
-  Widget _toggleTile({required String title, required String subtitle, required bool value, required ValueChanged<bool> onChanged}) {
+  Widget _toggleTile({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -229,315 +780,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    final appearance = (_settings['appearance'] as Map?)?.cast<String, dynamic>() ?? {};
-    final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
-    final permissions = (_settings['permissions'] as Map?)?.cast<String, dynamic>() ?? {};
-
-    return ListView(
+  Widget _emptyState(String text) {
+    return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [Color(0xFF171717), Color(0xFF0B0B0B)]),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.asset(
-                  'assets/images/zyroai-logo.jpg',
-                  width: 54,
-                  height: 54,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('ZyroAi Settings', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 4),
-                    Text('Premium control for profile, privacy, DND, motion tracking, and support.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle('Profile', 'Identity, language, and step goals'),
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  onChanged: (value) {
-                    _profile['name'] = value;
-                  },
-                  onEditingComplete: () => _save(),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _titleCtrl,
-                  decoration: const InputDecoration(labelText: 'Title'),
-                  onChanged: (value) {
-                    _profile['title'] = value;
-                  },
-                  onEditingComplete: () => _save(),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _goalCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Daily step goal'),
-                  onEditingComplete: () => _save(),
-                ),
-                const SizedBox(height: 10),
-                if (kDebugMode)
-                  TextField(controller: _apiBaseUrlCtrl, decoration: const InputDecoration(labelText: 'Backend API base URL (Debug)'))
-                else
-                  const ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('Backend'),
-                    subtitle: Text('Connected to secure ZyroAi cloud endpoint'),
-                  ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: (_profile['language'] ?? 'en').toString(),
-                  decoration: const InputDecoration(labelText: 'Language'),
-                  items: const [
-                    DropdownMenuItem(value: 'en', child: Text('English')),
-                    DropdownMenuItem(value: 'hi', child: Text('Hindi')),
-                    DropdownMenuItem(value: 'es', child: Text('Spanish')),
-                    DropdownMenuItem(value: 'ar', child: Text('Arabic')),
-                  ],
-                  onChanged: (value) {
-                    setState(() => _profile['language'] = value);
-                    _save();
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle('Automation', 'On or off controls for how ZyroAi behaves'),
-                _toggleTile(
-                  title: 'DND mode',
-                  subtitle: 'Answer incoming calls with the busy AI message.',
-                  value: automation['dndMode'] == true,
-                  onChanged: (value) => setState(() {
-                    automation['dndMode'] = value;
-                    _settings['automation'] = automation;
-                    _scheduleAutosave(syncNative: true);
-                  }),
-                ),
-                _toggleTile(
-                  title: 'Call auto-reply',
-                  subtitle: 'Send the DND call response automatically.',
-                  value: automation['callAutoReply'] != false,
-                  onChanged: (value) => setState(() {
-                    automation['callAutoReply'] = value;
-                    _settings['automation'] = automation;
-                    _scheduleAutosave(syncNative: true);
-                  }),
-                ),
-                _toggleTile(
-                  title: 'Smart step tracking',
-                  subtitle: 'Use native step sensor plus location speed filtering.',
-                  value: automation['autoStepTracking'] == true,
-                  onChanged: (value) => setState(() {
-                    automation['autoStepTracking'] = value;
-                    _settings['automation'] = automation;
-                    _scheduleAutosave(refreshMotion: true);
-                  }),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (Platform.isAndroid) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sectionTitle('Call Screening', 'Native Android telecom role and DND screening'),
-                  Text(
-                    _callScreening['supported'] == true
-                        ? (_callScreening['roleHeld'] == true
-                            ? 'Native call-screening role is active.'
-                            : 'Native call-screening role is not granted yet.')
-                        : 'This Android version does not support the native screening role.',
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _callScreening['supported'] == true ? _requestCallScreeningRole : null,
-                    child: Text(_callScreening['roleHeld'] == true ? 'Role Active' : 'Enable Call Screening'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle('Permissions', 'Use switch controls and request actual device permissions'),
-                _toggleTile(
-                  title: 'Location permission',
-                  subtitle: 'Allow weather refresh and live movement tracking.',
-                  value: permissions['location'] == true,
-                  onChanged: (value) => value
-                      ? _requestPermission('location')
-                      : setState(() {
-                          permissions['location'] = false;
-                          _settings['permissions'] = permissions;
-                          _scheduleAutosave(refreshMotion: true);
-                        }),
-                ),
-                _toggleTile(
-                  title: 'Activity permission',
-                  subtitle: 'Allow native step and movement tracking.',
-                  value: permissions['activity'] == true,
-                  onChanged: (value) => value
-                      ? _requestPermission('activity')
-                      : setState(() {
-                          permissions['activity'] = false;
-                          _settings['permissions'] = permissions;
-                          _scheduleAutosave(refreshMotion: true);
-                        }),
-                ),
-                _toggleTile(
-                  title: 'Notifications permission',
-                  subtitle: 'Allow reminders, alerts, and DND updates.',
-                  value: permissions['notifications'] == true,
-                  onChanged: (value) => value
-                      ? _requestPermission('notifications')
-                      : setState(() {
-                          permissions['notifications'] = false;
-                          _settings['permissions'] = permissions;
-                          _scheduleAutosave();
-                        }),
-                ),
-                _toggleTile(
-                  title: 'Microphone permission',
-                  subtitle: 'Allow speech-to-text translation and voice assistant features.',
-                  value: permissions['microphone'] == true,
-                  onChanged: (value) => value
-                      ? _requestPermission('microphone')
-                      : setState(() {
-                          permissions['microphone'] = false;
-                          _settings['permissions'] = permissions;
-                          _scheduleAutosave();
-                        }),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle('Appearance', 'Executive theme controls'),
-                DropdownButtonFormField<String>(
-                  initialValue: (appearance['theme'] ?? 'black-gold').toString(),
-                  decoration: const InputDecoration(labelText: 'Theme'),
-                  items: const [
-                    DropdownMenuItem(value: 'black-gold', child: Text('Black Gold')),
-                    DropdownMenuItem(value: 'black-ice', child: Text('Black Ice')),
-                    DropdownMenuItem(value: 'obsidian-blue', child: Text('Obsidian Blue')),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => appearance['theme'] = value);
-                    _settings['appearance'] = appearance;
-                    widget.onThemeChanged(value);
-                    _scheduleAutosave();
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _sectionTitle('Device Info', 'Live device information available to ZyroAi'),
-                ..._deviceInfo.entries.map(
-                  (entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 4, child: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w700))),
-                        const SizedBox(width: 8),
-                        Expanded(flex: 6, child: Text(entry.value)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Support', style: TextStyle(fontWeight: FontWeight.w800)),
-                      SizedBox(height: 4),
-                      Text('Need help with updates, setup, or account behavior?'),
-                    ],
-                  ),
-                ),
-                TextButton(onPressed: _openSupport, child: const Text('Email Support')),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving...' : 'Save Now (Autosave Enabled)')),
-      ],
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Text(text),
     );
   }
 }

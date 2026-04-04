@@ -8,6 +8,7 @@ import 'core/chief_theme.dart';
 import 'core/services/api_service.dart';
 import 'core/services/motion_tracking_service.dart';
 import 'core/services/notification_service.dart';
+import 'features/assistant/assistant_screen.dart';
 import 'features/communication/communication_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/decision/decision_screen.dart';
@@ -80,7 +81,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
   Future<void> _handleInstalledVersionChange() async {
     final prefs = await SharedPreferences.getInstance();
     final previousVersion = prefs.getString(_installedVersionKey);
-    String currentVersion = '1.1.7';
+    String currentVersion = '1.1.8';
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
@@ -161,6 +162,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
       DashboardScreen(api: _api),
       CommunicationScreen(api: _api),
       DecisionScreen(api: _api),
+      AssistantScreen(api: _api),
       IntelligenceScreen(api: _api),
       MemoryScreen(api: _api),
       SettingsScreen(api: _api, onThemeChanged: _onThemeChanged),
@@ -170,6 +172,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
       (label: 'Dashboard', icon: Icons.space_dashboard_outlined),
       (label: 'Comms', icon: Icons.call_outlined),
       (label: 'Decision', icon: Icons.balance_outlined),
+      (label: 'Assistant', icon: Icons.auto_awesome_outlined),
       (label: 'Intel', icon: Icons.insights_outlined),
       (label: 'Memory', icon: Icons.memory_outlined),
       (label: 'Settings', icon: Icons.settings_outlined),
@@ -203,6 +206,18 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
                   Text(items[_index].label, style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  _themeName.replaceAll('-', ' '),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
             ],
           ),
         ),
@@ -232,20 +247,37 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
                     subtitle: const Text('Executive mobile control center'),
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      _drawerChip('Premium UI'),
+                      const SizedBox(width: 8),
+                      _drawerChip('AI Tools'),
+                    ],
+                  ),
+                ),
                 const Divider(),
                 Expanded(
                   child: ListView.builder(
                     itemCount: items.length,
                     itemBuilder: (context, index) {
                       final item = items[index];
-                      return ListTile(
-                        leading: Icon(item.icon),
-                        title: Text(item.label),
-                        selected: _index == index,
-                        onTap: () {
-                          setState(() => _index = index);
-                          Navigator.of(context).pop();
-                        },
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _index == index ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: ListTile(
+                          leading: Icon(item.icon),
+                          title: Text(item.label),
+                          selected: _index == index,
+                          onTap: () {
+                            setState(() => _index = index);
+                            Navigator.of(context).pop();
+                          },
+                        ),
                       );
                     },
                   ),
@@ -256,6 +288,17 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
         ),
         body: pages[_index],
       ),
+    );
+  }
+
+  Widget _drawerChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(text),
     );
   }
 }
