@@ -143,37 +143,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await widget.api.saveApiBaseUrl(_apiBaseUrlCtrl.text.trim());
       }
 
-      await widget.api.saveProfile({
+      final savedProfile = await widget.api.saveProfile({
         'name': _nameCtrl.text.trim(),
         'title': _titleCtrl.text.trim(),
         'city': _cityCtrl.text.trim(),
         'daily_step_goal': int.tryParse(_goalCtrl.text) ?? 8000,
         'language': _profile['language'] ?? 'en',
       });
-      await widget.api.saveSettings(_settings);
+      final savedSettings = await widget.api.saveSettings(_settings);
+      _profile = (savedProfile['profile'] as Map?)?.cast<String, dynamic>() ?? _profile;
+      _settings = (savedSettings['settings'] as Map?)?.cast<String, dynamic>() ?? _settings;
 
       final automation = (_settings['automation'] as Map?)?.cast<String, dynamic>() ?? {};
-      if (syncNative && Platform.isAndroid) {
-        await NativeTelecomService.syncCallAutomation(
-          dndMode: automation['dndMode'] == true,
-          callAutoReply: automation['callAutoReply'] != false,
-          smsAutoReply: automation['smsAutoReply'] != false,
-        );
-        _callScreening = await NativeTelecomService.getCallScreeningStatus();
+      if (syncNative && Platform.isAndroid && mounted) {
+        try {
+          await NativeTelecomService.syncCallAutomation(
+            dndMode: automation['dndMode'] == true,
+            callAutoReply: automation['callAutoReply'] != false,
+            smsAutoReply: automation['smsAutoReply'] != false,
+          );
+          _callScreening = await NativeTelecomService.getCallScreeningStatus();
+        } catch (_) {
+          _autosaveStatus = 'Saved. Native sync will retry automatically.';
+        }
       }
 
       if (refreshMotion) {
-        await MotionTrackingService.instance.refreshConfig();
+        try {
+          await MotionTrackingService.instance.refreshConfig();
+        } catch (_) {}
       }
 
-      _auditLogs = await widget.api.fetchAuditLogs();
+      try {
+        _auditLogs = await widget.api.fetchAuditLogs();
+      } catch (_) {}
       if (!mounted) return;
-      setState(() => _autosaveStatus = 'Everything saved');
+      setState(() => _autosaveStatus = _autosaveStatus == 'Saving changes...' ? 'Everything saved' : _autosaveStatus);
       _showSavePopup(showToast ? 'Settings saved successfully.' : 'Changes saved automatically.');
     } catch (error) {
       if (!mounted) return;
-      setState(() => _autosaveStatus = 'Save failed, retry on next change');
-      _showSavePopup('Saving failed: $error', error: true);
+      final message = '$error';
+      final label = message.toLowerCase().contains('profile')
+          ? 'Profile save failed'
+          : message.toLowerCase().contains('settings')
+              ? 'Settings save failed'
+              : 'Saving failed';
+      setState(() => _autosaveStatus = '$label. Retry on next change');
+      _showSavePopup('$label: $error', error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

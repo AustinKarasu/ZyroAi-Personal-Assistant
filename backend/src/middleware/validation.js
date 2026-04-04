@@ -1,6 +1,9 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 export const requireDeviceId = (req, res, next) => {
+  if (req.path.includes('/integrations/') && req.path.endsWith('/callback')) {
+    return next();
+  }
   const deviceId = req.header("x-device-id") || req.query.deviceId;
   if (!deviceId || deviceId.length < 8) {
     return res.status(400).json({ error: "Missing or invalid x-device-id header." });
@@ -128,7 +131,7 @@ export const schemas = {
     }).optional()
   }),
   updateProfile: z.object({
-    name: z.string().min(2).max(80).optional(),
+    name: z.string().min(2).max(80).or(z.literal("")).optional(),
     title: z.string().min(2).max(80).or(z.literal("")).optional(),
     email: z.string().email().or(z.literal("")).optional(),
     avatar_url: z.string().url().or(z.literal("")).optional(),
@@ -167,3 +170,4 @@ export const schemas = {
     message: z.string().min(2).max(400)
   })
 };
+

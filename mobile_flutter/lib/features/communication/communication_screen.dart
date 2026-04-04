@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/api_service.dart';
 import '../../core/services/native_telecom_service.dart';
@@ -191,21 +192,22 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   Future<void> _authorizePlatform(String platform) async {
     setState(() => _busy = true);
     try {
-      final response = await widget.api.authorizeIntegration(
-        platform,
-        permissions: const ['read_messages', 'send_messages', 'read_status'],
-      );
-      if (!mounted) return;
-      final integration = (response['integration'] as Map?)?.cast<String, dynamic>() ?? {};
-      setState(() {
-        _integrations = {
-          ..._integrations,
-          platform: integration,
-        };
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_platformLabel(platform)} authorization saved for this device.')),
-      );
+      final response = await widget.api.startIntegrationAuth(platform);
+      final configured = response['configured'] == true;
+      final authUrl = response['authUrl']?.toString() ?? '';
+      if (!configured || authUrl.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_platformLabel(platform)} is not configured yet. Add provider credentials first.')),
+        );
+        return;
+      }
+      final launched = await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to open ${_platformLabel(platform)} authorization link.')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -504,7 +506,13 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 ...['whatsapp', 'instagram', 'facebook', 'messenger', 'x'].map((platform) {
                   final meta = (_integrations[platform] as Map?)?.cast<String, dynamic>() ?? {};
                   final connected = meta['connected'] == true;
+                  final status = meta['status']?.toString() ?? (connected ? "authorized" : "not_authorized");
                   final permissions = ((meta['permissions'] as List?) ?? const []).join(', ');
+                  final statusLabel = connected
+                      ? (permissions.isEmpty ? "Authorized" : "Authorized for $permissions")
+                      : status == "auth_pending"
+                          ? "Authorization pending"
+                          : "Not authorized yet";
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
@@ -521,7 +529,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                               Text(_platformLabel(platform), style: const TextStyle(fontWeight: FontWeight.w700)),
                               const SizedBox(height: 4),
                               Text(
-                                connected ? 'Authorized for $permissions' : 'Not authorized yet',
+                                statusLabel,
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ],
@@ -530,7 +538,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                         const SizedBox(width: 10),
                         FilledButton.tonal(
                           onPressed: _busy ? null : () => _authorizePlatform(platform),
-                          child: Text(connected ? 'Refresh Auth' : 'Authorize'),
+                          child: Text(connected ? 'Refresh' : 'Authorize'),
                         ),
                       ],
                     ),
@@ -569,6 +577,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                     const SizedBox(height: 10),
                     ...logs.map((log) {
                       final handledByDnd = log['handled_by_dnd'] == true;
+                      final recordingUrl = log['recording_url']?.toString();
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
@@ -586,10 +595,24 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                             ),
                           ),
                           title: Text(log['caller'].toString()),
-                          subtitle: Text(
-                            handledByDnd
-                                ? 'DND handled this call | Urgency ${log['urgency']} | ${log['agent_reply'] ?? ''}'
-                                : 'Sentiment ${log['sentiment']} | Urgency ${log['urgency']}',
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                handledByDnd
+                                    ? 'DND handled this call | Urgency ${log['urgency']} | ${log['agent_reply'] ?? ''}'
+                                    : 'Sentiment ${log['sentiment']} | Urgency ${log['urgency']}',
+                              ),
+                              if (recordingUrl != null && recordingUrl.isNotEmpty)
+                                TextButton.icon(
+                                  onPressed: () => launchUrl(
+                                    Uri.parse(recordingUrl),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                                  icon: const Icon(Icons.play_circle_outline, size: 18),
+                                  label: const Text('Play recording'),
+                                ),
+                            ],
                           ),
                           trailing: IconButton(
                             onPressed: () async {
@@ -639,3 +662,8 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     }
   }
 }
+
+
+
+
+

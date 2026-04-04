@@ -65,6 +65,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
       _titleCtrl.clear();
       await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Task created: $title')),
+      );
     } finally {
       if (mounted) setState(() => _savingTask = false);
     }
@@ -75,6 +79,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       await widget.api.setMode(mode);
       await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mode changed to $mode')),
+      );
     } finally {
       if (mounted) setState(() => _updatingMode = false);
     }
@@ -89,6 +97,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     };
     await widget.api.updateTaskStatus(task['id'].toString(), next);
     await _refresh();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Task moved to ${next.replaceAll('_', ' ')}')),
+    );
   }
 
   @override
@@ -203,7 +215,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               title: 'Weather',
                               detail: weather == null
                                   ? 'Refresh weather from Intelligence after allowing location.'
-                                  : '${weather['summary']} • ${weather['temperatureC']} C',
+                                  : '${weather['summary']} | ${weather['temperatureC']} C',
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -213,7 +225,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               icon: Icons.directions_walk_outlined,
                               title: 'Footsteps',
                               detail:
-                                  '${steps['count'] ?? 0} / ${steps['goal'] ?? 8000} • ${steps['progress'] ?? 0}% complete',
+                                  '${steps['count'] ?? 0} / ${steps['goal'] ?? 8000} | ${steps['progress'] ?? 0}% complete',
                             ),
                           ),
                         ],
@@ -320,7 +332,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               context,
                               title: block['note']?.toString() ?? 'Focus session ready',
                               subtitle:
-                                  'Starts in ${block['startInMinutes'] ?? 0} min • ${block['durationMinutes'] ?? 0} minute session',
+                                  'Starts in ${block['startInMinutes'] ?? 0} min | ${block['durationMinutes'] ?? 0} minute session',
                               icon: Icons.psychology_alt_outlined,
                             );
                           }).toList(),
@@ -340,7 +352,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               context,
                               title: meeting['title']?.toString() ?? 'Meeting',
                               subtitle:
-                                  '${startAt != null ? '${startAt.day}/${startAt.month} ${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}' : 'Scheduled'} • ${meeting['owner'] ?? 'Owner'}',
+                                  '${startAt != null ? '${startAt.day}/${startAt.month} ${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}' : 'Scheduled'} | ${meeting['owner'] ?? 'Owner'}',
                               icon: Icons.event_outlined,
                             );
                           }).toList(),

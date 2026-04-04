@@ -1,4 +1,4 @@
-﻿const DEFAULT_CLOUD_API_BASE = "https://zyroai-backend.vercel.app/api";
+const DEFAULT_CLOUD_API_BASE = "https://zyroai-backend.vercel.app/api";
 const localHosts = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
 const browserHost = window.location.hostname || "127.0.0.1";
 const apiHost = browserHost === "0.0.0.0" ? "127.0.0.1" : browserHost;
@@ -9,7 +9,7 @@ const SECONDARY_API_BASE = localHosts.has(browserHost)
   ? (import.meta.env.VITE_API_BASE || DEFAULT_CLOUD_API_BASE)
   : null;
 const DEVICE_KEY = "chief_device_id";
-const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.9";
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || "1.1.11";
 const WORKSPACE_CACHE_KEY = "zyroai_workspace_cache";
 const storedDevice = localStorage.getItem(DEVICE_KEY);
 const DEVICE_ID = storedDevice || `web-${crypto.randomUUID()}`;
@@ -267,3 +267,4 @@ export function chatWithAssistant(message) {
 }
 
 export const appVersion = APP_VERSION;
+

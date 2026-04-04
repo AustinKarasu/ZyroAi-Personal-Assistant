@@ -1,6 +1,8 @@
-﻿import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const MANIFEST_FILE = "../app-update-manifest.json";
+const DEFAULT_REMOTE_MANIFEST =
+  "https://raw.githubusercontent.com/AustinKarasu/ZyroAi-Personal-Assistant/main/app-update-manifest.json";
 
 const parseVersion = (version) => version.split(".").map((segment) => Number(segment) || 0);
 
@@ -39,9 +41,17 @@ const readLocalManifest = () => {
   return { ...defaultManifest, ...JSON.parse(readFileSync(MANIFEST_FILE, "utf8")) };
 };
 
+const resolveManifestUrl = () => {
+  const configured = process.env.GITHUB_UPDATE_MANIFEST_URL || process.env.UPDATE_MANIFEST_URL;
+  if (configured && configured.trim().length > 0) {
+    return configured.trim();
+  }
+  return DEFAULT_REMOTE_MANIFEST;
+};
+
 export const loadUpdateManifest = async (clientVersion) => {
-  const configuredUrl = process.env.GITHUB_UPDATE_MANIFEST_URL;
-  if (!configuredUrl) {
+  const manifestUrl = resolveManifestUrl();
+  if (!manifestUrl) {
     const local = readLocalManifest();
     const currentVersion = clientVersion || local.currentVersion;
     return {
@@ -52,7 +62,7 @@ export const loadUpdateManifest = async (clientVersion) => {
   }
 
   try {
-    const response = await fetch(configuredUrl, { signal: AbortSignal.timeout(4000) });
+    const response = await fetch(manifestUrl, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) {
       throw new Error(`Manifest fetch failed with ${response.status}`);
     }

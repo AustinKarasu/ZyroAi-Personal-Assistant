@@ -1,8 +1,9 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
+import { encrypt } from "../services/crypto.js";
 import { generateDailyQuests } from "../services/quests.js";
 
 const dbEvents = new EventEmitter();
@@ -627,6 +628,9 @@ export const addCallLog = async (deviceId, payload) =>
       urgency: payload.urgency,
       agent_reply: payload.agentReply || "",
       handled_by_dnd: Boolean(payload.handledByDnd),
+      recording_url: payload.recordingUrl || null,
+      recording_duration: payload.recordingDuration || null,
+      call_sid: payload.callSid || null,
       created_at: now()
     });
     insertNotification(
@@ -812,7 +816,15 @@ export const getProfile = async (deviceId) => {
 
 export const updateProfile = async (deviceId, patch) =>
   mutateWorkspace(deviceId, "profile_updated", async (workspace) => {
-    workspace.profile = { ...defaultProfile(), ...workspace.profile, ...patch };
+    const trimmedName = typeof patch.name === "string" ? patch.name.trim() : undefined;
+    const trimmedTitle = typeof patch.title === "string" ? patch.title.trim() : undefined;
+    workspace.profile = {
+      ...defaultProfile(),
+      ...workspace.profile,
+      ...patch,
+      ...(trimmedName != null ? { name: trimmedName || workspace.profile.name || defaultProfile().name } : {}),
+      ...(trimmedTitle != null ? { title: trimmedTitle } : {})
+    };
     insertNotification(workspace, "Profile updated", "Identity and personalization settings saved.", "info");
     return workspace.profile;
   }, "Profile saved.");
@@ -995,22 +1007,27 @@ export const authorizeIntegration = async (deviceId, platform, permissions) =>
       ...(defaults.integrations[platform] || {}),
       ...(workspace.settings.integrations?.[platform] || {})
     };
+    const connected = Boolean(current.token_encrypted);
+    const status = connected ? "authorized" : "pending";
+    const mode = connected ? "live" : "auth_pending";
     workspace.settings.integrations[platform] = {
       ...current,
-      connected: true,
-      status: "authorized",
-      mode: "consent-granted",
+      connected,
+      status,
+      mode,
       permissions,
-      last_synced_at: now()
+      last_synced_at: connected ? now() : current.last_synced_at || null
     };
     insertNotification(
       workspace,
-      `${integrationDisplayNames[platform] || platform} linked`,
-      `Authorization was granted for ${permissions.join(", ")} access.`,
-      "success"
+      `${integrationDisplayNames[platform] || platform} authorization started`,
+      connected
+        ? "Authorization confirmed. Live messaging is enabled."
+        : "Authorization initiated. Complete the provider sign-in to finish linking.",
+      connected ? "success" : "info"
     );
     return workspace.settings.integrations[platform];
-  }, `${integrationDisplayNames[platform] || platform} authorized.`);
+  }, `${integrationDisplayNames[platform] || platform} authorization updated.`);
 
 export const getWeatherCache = async (deviceId) => {
   const workspace = await loadWorkspace(deviceId);
@@ -1040,3 +1057,60 @@ export const listReportSnapshots = async (deviceId) => {
 
 export const getWorkspaceSnapshot = async (deviceId) => loadWorkspace(deviceId);
 export const getStorageMode = () => storageMode;
+export const setIntegrationPendingAuth = async (deviceId, platform, payload) =>
+  mutateWorkspace(deviceId, "settings_updated", async (workspace) => {
+    const defaults = defaultSettings();
+    const current = {
+      ...(defaults.integrations[platform] || {}),
+      ...(workspace.settings.integrations?.[platform] || {})
+    };
+    workspace.settings.integrations[platform] = {
+      ...current,
+      status: "auth_pending",
+      mode: "auth_pending",
+      pending_state: payload.state,
+      pending_created_at: now(),
+      pending_code_verifier: payload.codeVerifier || null,
+      auth_provider: payload.provider,
+      permissions: payload.permissions || current.permissions || [],
+      last_synced_at: current.last_synced_at || null
+    };
+    return workspace.settings.integrations[platform];
+  }, `${integrationDisplayNames[platform] || platform} auth initiated.`);
+
+export const completeIntegrationAuth = async (deviceId, platform, payload) =>
+  mutateWorkspace(deviceId, "settings_updated", async (workspace) => {
+    const defaults = defaultSettings();
+    const current = {
+      ...(defaults.integrations[platform] || {}),
+      ...(workspace.settings.integrations?.[platform] || {})
+    };
+    workspace.settings.integrations[platform] = {
+      ...current,
+      connected: true,
+      status: "authorized",
+      mode: "live",
+      token_encrypted: payload.accessToken ? encrypt(payload.accessToken) : current.token_encrypted || null,
+      refresh_token_encrypted: payload.refreshToken ? encrypt(payload.refreshToken) : current.refresh_token_encrypted || null,
+      token_expires_at: payload.expiresAt || current.token_expires_at || null,
+      permissions: payload.permissions || current.permissions || [],
+      pending_state: null,
+      pending_created_at: null,
+      last_synced_at: now()
+    };
+    insertNotification(
+      workspace,
+      `${integrationDisplayNames[platform] || platform} linked`,
+      "Authorization completed and live messaging is ready.",
+      "success"
+    );
+    return workspace.settings.integrations[platform];
+  }, `${integrationDisplayNames[platform] || platform} authorized.`);
+
+
+
+
+
+
+
+

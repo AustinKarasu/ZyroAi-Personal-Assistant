@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class NativeTelecomService {
@@ -39,6 +40,18 @@ class NativeTelecomService {
     final result = await _channel.invokeMethod<bool>('sendSms', {
       'phoneNumber': phoneNumber,
       'message': message,
+    });
+    return result ?? false;
+  }
+
+  static Future<bool> downloadAndInstallApk({
+    required String url,
+    required String version,
+  }) async {
+    if (kIsWeb) return false;
+    final result = await _channel.invokeMethod<bool>('downloadAndInstallApk', {
+      'url': url,
+      'version': version,
     });
     return result ?? false;
   }

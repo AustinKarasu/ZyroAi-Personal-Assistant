@@ -8,6 +8,7 @@ import 'core/chief_l10n.dart';
 import 'core/chief_theme.dart';
 import 'core/services/api_service.dart';
 import 'core/services/motion_tracking_service.dart';
+import 'core/services/native_telecom_service.dart';
 import 'core/services/notification_service.dart';
 import 'features/assistant/assistant_screen.dart';
 import 'features/communication/communication_screen.dart';
@@ -35,7 +36,8 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
 
   int _index = 0;
   final _api = ApiService();
-  bool _updatePromptChecked = false;
+  DateTime? _lastUpdateCheck;
+  static const _updateCheckInterval = Duration(minutes: 30);
   String _themeName = 'black-gold';
   String _languageCode = 'en';
 
@@ -62,6 +64,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       MotionTrackingService.instance.refreshConfig();
+      _maybeShowUpdatePrompt(force: true);
     }
   }
 
@@ -95,7 +98,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
   Future<void> _handleInstalledVersionChange() async {
     final prefs = await SharedPreferences.getInstance();
     final previousVersion = prefs.getString(_installedVersionKey);
-    String currentVersion = '1.1.9';
+    String currentVersion = '1.1.11';
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
@@ -121,21 +124,44 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
     await _api.clearAllLocalState();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(MotionTrackingService.instance.dismissedUpdateVersionKey, latestVersion);
-    if (url.isNotEmpty) {
+    final startedNativeInstall = url.isNotEmpty
+        ? await NativeTelecomService.downloadAndInstallApk(
+            url: url,
+            version: latestVersion,
+          )
+        : false;
+    if (!startedNativeInstall && url.isNotEmpty) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     }
   }
 
-  Future<void> _maybeShowUpdatePrompt() async {
-    if (!mounted || _updatePromptChecked) return;
-    _updatePromptChecked = true;
+  Future<Map<String, dynamic>?> _loadUpdateCenter() async {
+    try {
+      final status = await _api.fetchUpdateStatus();
+      return status.cast<String, dynamic>();
+    } catch (_) {
+      try {
+        final workspace = await _api.fetchWorkspace();
+        return (workspace['updateCenter'] as Map?)?.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Future<void> _maybeShowUpdatePrompt({bool force = false}) async {
+    if (!mounted) return;
+    final now = DateTime.now();
+    if (!force && _lastUpdateCheck != null && now.difference(_lastUpdateCheck!) < _updateCheckInterval) {
+      return;
+    }
+    _lastUpdateCheck = now;
 
     try {
-      final workspace = await _api.fetchWorkspace();
-      final updateCenter = (workspace['updateCenter'] as Map?)?.cast<String, dynamic>();
+      final updateCenter = await _loadUpdateCenter();
       if (updateCenter == null || updateCenter['updateAvailable'] != true) return;
 
       final latestVersion = updateCenter['latestVersion']?.toString() ?? '';
+      if (latestVersion.isEmpty) return;
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getString(MotionTrackingService.instance.dismissedUpdateVersionKey) == latestVersion) {
         return;
@@ -147,7 +173,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
         barrierDismissible: false,
         builder: (context) => AlertDialog(
           title: const Text('Update Available'),
-          content: Text('Version $latestVersion is ready for ZyroAi. Updating will clear local cache so the new build starts clean.'),
+          content: Text('Version $latestVersion is ready for ZyroAi. The app can download the new build and hand it to Android for installation without opening the browser.'),
           actions: [
             TextButton(
               onPressed: () async {
@@ -269,7 +295,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
                             ),
                           ),
                           title: Text(l10n.t('appName')),
-                          subtitle: Text(l10n.t('dashboard')),
+                          subtitle: Text(items[_index].label),
                         ),
                       ),
                       Padding(
@@ -311,7 +337,15 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              body: pages[_index],
+              body: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: KeyedSubtree(
+                  key: ValueKey(_index),
+                  child: pages[_index],
+                ),
+              ),
             );
           },
         ),
@@ -330,3 +364,19 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

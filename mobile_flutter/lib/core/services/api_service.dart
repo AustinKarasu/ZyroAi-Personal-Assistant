@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:io' show Platform;
 
@@ -19,7 +19,7 @@ class ApiService {
   String? _cachedVersion;
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
-  static const _fallbackAppVersion = '1.1.9';
+  static const _fallbackAppVersion = '1.1.11';
   static const _cloudBase = 'https://zyroai-backend.vercel.app';
 
   static String _defaultBaseUrl() {
@@ -231,6 +231,10 @@ class ApiService {
     return _requestJson('/api/insights', error: 'Insights failed');
   }
 
+  Future<Map<String, dynamic>> fetchUpdateStatus() async {
+    return _requestJson('/api/updates/status', error: 'Update status failed');
+  }
+
   Future<List<Map<String, dynamic>>> fetchAuditLogs() async {
     final map = await _requestJson('/api/audit-logs', error: 'Audit log fetch failed');
     return (map['logs'] as List<dynamic>).cast<Map<String, dynamic>>();
@@ -284,6 +288,9 @@ class ApiService {
       body: {'permissions': permissions},
       error: 'Integration authorization failed',
     );
+  }
+  Future<Map<String, dynamic>> startIntegrationAuth(String platform) async {
+    return _requestJson('/api/integrations/$platform/oauth', error: 'Integration auth failed');
   }
 
   Future<Map<String, dynamic>> setMode(String mode) async {
@@ -392,5 +399,12 @@ class ApiService {
   }
 
 }
+
+
+
+
+
+
+
 
 

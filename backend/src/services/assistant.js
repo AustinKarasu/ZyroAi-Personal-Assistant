@@ -270,7 +270,7 @@ export const buildAssistantReply = async (message, workspace, actionNotice = "")
 
   const model = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000);
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.OPENROUTER_TIMEOUT_MS || 12000));
 
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

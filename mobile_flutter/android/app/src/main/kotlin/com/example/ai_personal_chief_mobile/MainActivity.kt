@@ -2,21 +2,46 @@ package com.example.ai_personal_chief_mobile
 
 import android.Manifest
 import android.app.Activity
+import android.app.DownloadManager
 import android.app.role.RoleManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val channelName = "zyroai/native_telecom"
     private val requestRoleCode = 8411
+    private val requestInstallPackagesCode = 8412
     private var pendingRoleResult: MethodChannel.Result? = null
+    private var pendingInstallPath: String? = null
+    private var pendingInstallMimeType: String = "application/vnd.android.package-archive"
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+            val prefs = getSharedPreferences("zyroai_native", Context.MODE_PRIVATE)
+            val expectedId = prefs.getLong("update_download_id", -1L)
+            val completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (expectedId == -1L || completedId != expectedId) return
+
+            val path = prefs.getString("update_apk_path", null) ?: return
+            prefs.edit().remove("update_download_id").apply()
+            installDownloadedApk(path)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -73,6 +98,16 @@ class MainActivity : FlutterActivity() {
                         result.success(sendSms(phoneNumber, message))
                     }
 
+                    "downloadAndInstallApk" -> {
+                        val url = call.argument<String>("url")?.trim().orEmpty()
+                        val version = call.argument<String>("version")?.trim().orEmpty()
+                        if (url.isBlank()) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        result.success(downloadAndInstallApk(url, version))
+                    }
+
                     "requestCallScreeningRole" -> {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                             result.success(false)
@@ -95,11 +130,91 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    override fun onStart() {
+        super.onStart()
+        registerReceiver(downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(downloadReceiver) }
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        pendingInstallPath?.let { path ->
+            if (canInstallPackages()) {
+                installDownloadedApk(path)
+            }
+        }
+    }
+
     private fun hasSmsPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.SEND_SMS
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun canInstallPackages(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()
+    }
+
+    private fun downloadAndInstallApk(url: String, version: String): Boolean {
+        return try {
+            val fileName = if (version.isBlank()) "zyroai-update.apk" else "ZyroAi-$version.apk"
+            val targetFile = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
+            if (targetFile.exists()) {
+                targetFile.delete()
+            }
+
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle("ZyroAi update")
+                .setDescription("Downloading the latest ZyroAi release")
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setMimeType("application/vnd.android.package-archive")
+                .setDestinationUri(Uri.fromFile(targetFile))
+
+            val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val downloadId = manager.enqueue(request)
+            getSharedPreferences("zyroai_native", Context.MODE_PRIVATE)
+                .edit()
+                .putLong("update_download_id", downloadId)
+                .putString("update_apk_path", targetFile.absolutePath)
+                .apply()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun installDownloadedApk(path: String) {
+        val file = File(path)
+        if (!file.exists()) return
+
+        pendingInstallPath = path
+        if (!canInstallPackages()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startActivityForResult(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:$packageName")
+                    },
+                    requestInstallPackagesCode
+                )
+            }
+            return
+        }
+
+        val apkUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, pendingInstallMimeType)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(installIntent)
+        pendingInstallPath = null
     }
 
     @Suppress("DEPRECATION")
@@ -124,6 +239,10 @@ class MainActivity : FlutterActivity() {
         if (requestCode == requestRoleCode) {
             pendingRoleResult?.success(resultCode == Activity.RESULT_OK)
             pendingRoleResult = null
+            return
+        }
+        if (requestCode == requestInstallPackagesCode && resultCode == Activity.RESULT_OK) {
+            pendingInstallPath?.let { installDownloadedApk(it) }
         }
     }
 }

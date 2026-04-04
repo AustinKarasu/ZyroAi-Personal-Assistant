@@ -22,6 +22,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
   final List<Map<String, String>> _pendingMessages = [];
   bool _loading = false;
   String _assistantStatus = 'Ready';
+  String? _lastAction;
+  String? _lastUserPrompt;
 
   @override
   void initState() {
@@ -47,6 +49,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
     setState(() {
       _loading = true;
       _assistantStatus = l10n.t('assistantThinking');
+      _lastUserPrompt = text;
       _pendingMessages
         ..clear()
         ..add({'role': 'user', 'text': text});
@@ -72,21 +75,33 @@ class _AssistantScreenState extends State<AssistantScreen> {
       await MotionTrackingService.instance.refreshConfig();
       if (!mounted) return;
       setState(() {
+        _lastAction = action;
         _assistantStatus = action?.isNotEmpty == true
             ? 'Action completed: $action'
             : l10n.t('assistantReady');
         _pendingMessages.clear();
         _workspaceFuture = widget.api.fetchWorkspace();
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            action?.isNotEmpty == true ? 'Assistant completed: $action' : 'Assistant response ready.',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _assistantStatus = l10n.t('assistantFailed');
+        _lastAction = null;
         _pendingMessages.add({
           'role': 'assistant',
           'text': 'Assistant request failed: $error',
         });
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Assistant failed: $error')),
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -193,6 +208,37 @@ class _AssistantScreenState extends State<AssistantScreen> {
             const SizedBox(height: 14),
             _toolRail(context),
             const SizedBox(height: 14),
+            if (_lastAction != null || _lastUserPrompt != null) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Command Result', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 8),
+                      if (_lastUserPrompt != null)
+                        Text(
+                          'Last prompt: $_lastUserPrompt',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      if (_lastAction != null) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(_lastAction!, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),

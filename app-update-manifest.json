@@ -1,15 +1,15 @@
 {
     "appName":  "ZyroAi",
-    "currentVersion":  "1.1.9",
-    "latestVersion":  "1.1.9",
+    "currentVersion":  "1.1.11",
+    "latestVersion":  "1.1.11",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.9/ZyroAi-v1.1.9.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.11/ZyroAi-v1.1.11.apk",
     "releaseNotes":  [
-                         "Fixed screen loads that could stay stuck when an API request failed instead of surfacing an error state",
-                         "Rebuilt the Intelligence surface with stronger weather, movement, translation, and report actions",
-                         "Improved assistant reliability and synced AI automation changes back to native device services",
-                         "Stabilized settings autosave with explicit success and failure popups and blank-title validation support",
-                         "Added a new Quests page with daily backend-generated wellness quests that refresh by day without an app update"
+                         "Added in-app Android update download and installer flow with no browser step",
+                         "Improved release detection by checking the dedicated update status endpoint on launch and resume",
+                         "Defaulted update manifest loading to the GitHub-hosted manifest for live release checks",
+                         "Kept the updater fallback path intact for non-Android surfaces",
+                         "Bundled the latest workspace, communication, assistant, and integration fixes into the release"
                      ]
 }

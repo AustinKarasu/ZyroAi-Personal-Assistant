@@ -9,6 +9,7 @@ import dashboardRoutes from "./routes/dashboard.js";
 import decisionRoutes from "./routes/decision.js";
 import memoryRoutes from "./routes/memory.js";
 import communicationRoutes from "./routes/communication.js";
+import integrationRoutes from "./routes/integrations.js";
 import insightsRoutes from "./routes/insights.js";
 import workspaceRoutes from "./routes/workspace.js";
 import { requireDeviceId } from "./middleware/validation.js";
@@ -43,6 +44,7 @@ export const buildApp = () => {
   app.use("/api", decisionRoutes);
   app.use("/api", memoryRoutes);
   app.use("/api", communicationRoutes);
+  app.use("/api", integrationRoutes);
   app.use("/api", insightsRoutes);
   app.use("/api", workspaceRoutes);
 
@@ -63,3 +65,5 @@ export const buildApp = () => {
 
 const app = buildApp();
 export default app;
+
+

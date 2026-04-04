@@ -45,11 +45,13 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
   }
 
   Future<Map<String, dynamic>> _load() async {
-    final workspace = await widget.api.fetchWorkspace();
+    final workspaceFuture = widget.api.fetchWorkspace();
+    final reportFuture = widget.api.fetchReport(_period);
+    final workspace = await workspaceFuture;
     Map<String, dynamic> report = {};
 
     try {
-      final reportResponse = await widget.api.fetchReport(_period);
+      final reportResponse = await reportFuture;
       report = (reportResponse['report'] as Map?)?.cast<String, dynamic>() ?? {};
     } catch (_) {
       final reports = ((workspace['reports'] as Map?)?['latest'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -402,83 +404,130 @@ class _IntelligenceScreenState extends State<IntelligenceScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(l10n.t('weatherMovement'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isCompact = constraints.maxWidth < 680;
+                    final infoChildren = [
+                      Expanded(
+                        child: _infoTile(
+                          context,
+                          title: 'Weather',
+                          detail: weather == null
+                              ? 'No live weather cached yet.'
+                              : '${weather['summary']} at ${weather['temperatureC']} C',
+                          footer: 'Lat ${_latCtrl.text} | Lon ${_lonCtrl.text}',
+                        ),
+                      ),
+                      const SizedBox(width: 10, height: 10),
+                      Expanded(
+                        child: _infoTile(
+                          context,
+                          title: 'Footsteps',
+                          detail: '${steps['count'] ?? 0} / ${steps['goal'] ?? 8000} today',
+                          footer: automation['autoStepTracking'] == true
+                              ? 'Smart tracking is active.'
+                              : 'Enable smart tracking in Settings.',
+                        ),
+                      ),
+                    ];
+
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            SizedBox(
-                              width: 340,
-                              child: _infoTile(
-                                context,
-                                title: 'Weather',
-                                detail: weather == null
-                                    ? 'No live weather cached yet.'
-                                    : '${weather['summary']} at ${weather['temperatureC']} C',
-                                footer: 'Lat ${_latCtrl.text} | Lon ${_lonCtrl.text}',
-                              ),
+                            Text(l10n.t('weatherMovement'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                            const SizedBox(height: 10),
+                            if (isCompact)
+                              Column(
+                                children: [
+                                  _infoTile(
+                                    context,
+                                    title: 'Weather',
+                                    detail: weather == null
+                                        ? 'No live weather cached yet.'
+                                        : '${weather['summary']} at ${weather['temperatureC']} C',
+                                    footer: 'Lat ${_latCtrl.text} | Lon ${_lonCtrl.text}',
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _infoTile(
+                                    context,
+                                    title: 'Footsteps',
+                                    detail: '${steps['count'] ?? 0} / ${steps['goal'] ?? 8000} today',
+                                    footer: automation['autoStepTracking'] == true
+                                        ? 'Smart tracking is active.'
+                                        : 'Enable smart tracking in Settings.',
+                                  ),
+                                ],
+                              )
+                            else
+                              Row(children: infoChildren),
+                            const SizedBox(height: 10),
+                            LinearProgressIndicator(
+                              minHeight: 10,
+                              value: (((steps['progress'] ?? 0) as num).toDouble() / 100).clamp(0, 1),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            SizedBox(
-                              width: 340,
-                              child: _infoTile(
-                                context,
-                                title: 'Footsteps',
-                                detail: '${steps['count'] ?? 0} / ${steps['goal'] ?? 8000} today',
-                                footer: automation['autoStepTracking'] == true
-                                    ? 'Smart tracking is active.'
-                                    : 'Enable smart tracking in Settings.',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        LinearProgressIndicator(
-                          minHeight: 10,
-                          value: (((steps['progress'] ?? 0) as num).toDouble() / 100).clamp(0, 1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(child: TextField(controller: _latCtrl, decoration: const InputDecoration(labelText: 'Latitude'))),
-                            const SizedBox(width: 8),
-                            Expanded(child: TextField(controller: _lonCtrl, decoration: const InputDecoration(labelText: 'Longitude'))),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton(
+                            const SizedBox(height: 12),
+                            if (isCompact) ...[
+                              TextField(controller: _latCtrl, decoration: const InputDecoration(labelText: 'Latitude')),
+                              const SizedBox(height: 8),
+                              TextField(controller: _lonCtrl, decoration: const InputDecoration(labelText: 'Longitude')),
+                              const SizedBox(height: 8),
+                              FilledButton(
                                 onPressed: _busy ? null : _refreshWeather,
                                 child: const Text('Refresh Weather'),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextField(
+                              const SizedBox(height: 10),
+                              TextField(
                                 controller: _stepCtrl,
                                 keyboardType: TextInputType.number,
                                 decoration: const InputDecoration(labelText: 'Manual steps'),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            FilledButton.tonal(
-                              onPressed: _busy ? null : _addSteps,
-                              child: const Text('Log'),
-                            ),
+                              const SizedBox(height: 8),
+                              FilledButton.tonal(
+                                onPressed: _busy ? null : _addSteps,
+                                child: const Text('Log Steps'),
+                              ),
+                            ] else ...[
+                              Row(
+                                children: [
+                                  Expanded(child: TextField(controller: _latCtrl, decoration: const InputDecoration(labelText: 'Latitude'))),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: TextField(controller: _lonCtrl, decoration: const InputDecoration(labelText: 'Longitude'))),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton(
+                                      onPressed: _busy ? null : _refreshWeather,
+                                      child: const Text('Refresh Weather'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _stepCtrl,
+                                      keyboardType: TextInputType.number,
+                                      decoration: const InputDecoration(labelText: 'Manual steps'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  FilledButton.tonal(
+                                    onPressed: _busy ? null : _addSteps,
+                                    child: const Text('Log'),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 Card(
