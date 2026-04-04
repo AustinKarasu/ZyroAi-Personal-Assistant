@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/chief_l10n.dart';
 import '../../core/services/api_service.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -92,6 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = ChiefL10nScope.of(context);
     final timeLabel =
         '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}:${_now.second.toString().padLeft(2, '0')}';
     final dateLabel = '${_now.day}/${_now.month}/${_now.year}';
@@ -107,16 +109,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: FutureBuilder<Map<String, dynamic>>(
         future: _dashboardFuture,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
           if (snapshot.hasError) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('Dashboard failed: ${snapshot.error}'),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Dashboard failed: ${snapshot.error}', textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _refresh,
+                      icon: const Icon(Icons.refresh),
+                      label: Text(l10n.t('refresh')),
+                    ),
+                  ],
+                ),
               ),
             );
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
           }
 
           final workspace = (snapshot.data!['workspace'] as Map).cast<String, dynamic>();
@@ -141,7 +154,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _heroCard(
                   context,
-                  title: '${profile['name'] ?? 'ZyroAi User'} is in ${overview['liveMode'] ?? 'Executive'} mode',
+                  title: '${profile['name'] ?? l10n.t('appName')} is in ${overview['liveMode'] ?? l10n.t('dashboard')} mode',
                   subtitle: overview['automationStatus']?.toString() ??
                       'Automation is stable and your workspace is synchronized.',
                   dateLabel: dateLabel,
@@ -220,14 +233,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 14),
                 _sectionCard(
                   context,
-                  title: 'Top Priorities',
+                  title: l10n.t('topPriorities'),
                   subtitle: tasks.isEmpty ? 'No open priorities yet' : '${tasks.length} tasks ranked by the priority engine',
                   action: Row(
                     children: [
                       OutlinedButton.icon(
                         onPressed: _refresh,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh'),
+                        label: Text(l10n.t('refresh')),
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton.icon(
@@ -236,7 +249,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           await _refresh();
                         },
                         icon: const Icon(Icons.delete_sweep_outlined),
-                        label: const Text('Clear'),
+                        label: Text(l10n.t('clear')),
                       ),
                     ],
                   ),
@@ -405,7 +418,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Executive Dashboard',
+                      ChiefL10nScope.of(context).t('executiveDashboard'),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).colorScheme.secondary,
                             fontWeight: FontWeight.w700,
@@ -475,7 +488,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           FilledButton.icon(
             onPressed: _savingTask ? null : _addTask,
             icon: const Icon(Icons.add_task_outlined),
-            label: Text(_savingTask ? 'Saving...' : 'Create'),
+            label: Text(_savingTask ? 'Saving...' : ChiefL10nScope.of(context).t('create')),
           ),
         ],
       ),

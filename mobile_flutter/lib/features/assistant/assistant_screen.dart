@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
+import '../../core/chief_l10n.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/motion_tracking_service.dart';
 import '../../core/services/native_telecom_service.dart';
@@ -18,7 +19,7 @@ class AssistantScreen extends StatefulWidget {
 class _AssistantScreenState extends State<AssistantScreen> {
   final _messageCtrl = TextEditingController();
   late Future<Map<String, dynamic>> _workspaceFuture;
-  final List<Map<String, String>> _localMessages = [];
+  final List<Map<String, String>> _pendingMessages = [];
   bool _loading = false;
   String _assistantStatus = 'Ready';
 
@@ -41,11 +42,14 @@ class _AssistantScreenState extends State<AssistantScreen> {
   Future<void> _sendMessage([String? preset]) async {
     final text = (preset ?? _messageCtrl.text).trim();
     if (text.isEmpty || _loading) return;
+    final l10n = ChiefL10nScope.of(context);
 
     setState(() {
       _loading = true;
-      _assistantStatus = 'ZyroAi is thinking...';
-      _localMessages.add({'role': 'user', 'text': text});
+      _assistantStatus = l10n.t('assistantThinking');
+      _pendingMessages
+        ..clear()
+        ..add({'role': 'user', 'text': text});
       if (preset == null) {
         _messageCtrl.clear();
       }
@@ -53,7 +57,6 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
     try {
       final response = await widget.api.chat(text);
-      final message = ((response['message'] as Map?)?['content'] ?? '').toString();
       final action = response['action']?.toString();
       if (!mounted) return;
       final settingsPayload = await widget.api.fetchSettings();
@@ -63,6 +66,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
         await NativeTelecomService.syncCallAutomation(
           dndMode: automation['dndMode'] == true,
           callAutoReply: automation['callAutoReply'] != false,
+          smsAutoReply: automation['smsAutoReply'] != false,
         );
       }
       await MotionTrackingService.instance.refreshConfig();
@@ -70,18 +74,15 @@ class _AssistantScreenState extends State<AssistantScreen> {
       setState(() {
         _assistantStatus = action?.isNotEmpty == true
             ? 'Action completed: $action'
-            : 'Assistant responded from your live workspace.';
-        _localMessages.add({
-          'role': 'assistant',
-          'text': message.isEmpty ? 'ZyroAi could not generate a reply.' : message,
-        });
+            : l10n.t('assistantReady');
+        _pendingMessages.clear();
         _workspaceFuture = widget.api.fetchWorkspace();
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _assistantStatus = 'Assistant request failed';
-        _localMessages.add({
+        _assistantStatus = l10n.t('assistantFailed');
+        _pendingMessages.add({
           'role': 'assistant',
           'text': 'Assistant request failed: $error',
         });
@@ -98,11 +99,28 @@ class _AssistantScreenState extends State<AssistantScreen> {
     return FutureBuilder<Map<String, dynamic>>(
       future: _workspaceFuture,
       builder: (context, snapshot) {
+        final l10n = ChiefL10nScope.of(context);
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Assistant failed: ${snapshot.error}', textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _refresh,
+                    icon: const Icon(Icons.refresh),
+                    label: Text(l10n.t('refresh')),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Assistant failed: ${snapshot.error}'));
         }
 
         final workspace = snapshot.data!;
@@ -120,7 +138,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   'text': entry['content']?.toString() ?? '',
                 })
             .toList();
-        final conversation = [...persistedMessages, ..._localMessages];
+        final conversation = [...persistedMessages, ..._pendingMessages];
         final steps = (workspace['steps'] as Map?)?.cast<String, dynamic>() ?? {};
         final weather = (workspace['weather'] as Map?)?.cast<String, dynamic>();
 
@@ -142,7 +160,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'AI Chief',
+                    l10n.t('aiChief'),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.secondary,
                           fontWeight: FontWeight.w700,
@@ -183,13 +201,13 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
-                          child: Text('Quick Prompts', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                        Expanded(
+                          child: Text(l10n.t('aiTools'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                         ),
                         TextButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh, size: 18),
-                          label: const Text('Refresh'),
+                          label: Text(l10n.t('refresh')),
                         ),
                       ],
                     ),
@@ -221,7 +239,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                           child: FilledButton.icon(
                             onPressed: _loading ? null : _sendMessage,
                             icon: const Icon(Icons.send_outlined),
-                            label: Text(_loading ? 'Working...' : 'Send to Assistant'),
+                            label: Text(_loading ? l10n.t('working') : l10n.t('send')),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -229,10 +247,10 @@ class _AssistantScreenState extends State<AssistantScreen> {
                           onPressed: conversation.isEmpty
                               ? null
                               : () => setState(() {
-                                    _localMessages.clear();
+                                    _pendingMessages.clear();
                                     _assistantStatus = 'Conversation cleared';
                                   }),
-                          child: const Text('Clear'),
+                          child: Text(l10n.t('clear')),
                         ),
                       ],
                     ),
@@ -256,8 +274,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
-                          child: Text('Conversation Feed', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                        Expanded(
+                          child: Text(l10n.t('conversationFeed'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                         ),
                         Text(
                           '${conversation.length} messages',

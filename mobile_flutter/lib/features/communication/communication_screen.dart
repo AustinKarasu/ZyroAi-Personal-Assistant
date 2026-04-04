@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/services/api_service.dart';
 import '../../core/services/native_telecom_service.dart';
@@ -16,6 +17,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   late Future<List<Map<String, dynamic>>> _logsFuture;
   final _callerCtrl = TextEditingController();
   final _transcriptCtrl = TextEditingController();
+  final _replyNumberCtrl = TextEditingController();
   final _replySenderCtrl = TextEditingController(text: 'Alex');
   final _replyUntilCtrl = TextEditingController(text: '3:00 PM');
   String _replyContext = 'meeting';
@@ -39,6 +41,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   void dispose() {
     _callerCtrl.dispose();
     _transcriptCtrl.dispose();
+    _replyNumberCtrl.dispose();
     _replySenderCtrl.dispose();
     _replyUntilCtrl.dispose();
     super.dispose();
@@ -73,6 +76,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     await NativeTelecomService.syncCallAutomation(
       dndMode: _dndMode,
       callAutoReply: _callAutoReply,
+      smsAutoReply: _smsAutoReply,
     );
     _nativeStatus = await NativeTelecomService.getCallScreeningStatus();
     if (mounted) setState(() {});
@@ -146,6 +150,44 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     );
   }
 
+  Future<void> _requestSmsPermission() async {
+    final status = await Permission.sms.request();
+    _nativeStatus = await NativeTelecomService.getCallScreeningStatus();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          status.isGranted
+              ? 'SMS permission granted. ZyroAi can now send real device texts.'
+              : 'SMS permission was not granted.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendGeneratedSms() async {
+    final number = _replyNumberCtrl.text.trim();
+    if (number.isEmpty || _autoReply.trim().isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final sent = await NativeTelecomService.sendSms(
+        phoneNumber: number,
+        message: _autoReply.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(sent ? 'SMS sent to $number.' : 'SMS could not be sent. Check SMS permission and number format.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+      _nativeStatus = await NativeTelecomService.getCallScreeningStatus();
+      if (mounted) setState(() {});
+    }
+  }
+
   Future<void> _authorizePlatform(String platform) async {
     setState(() => _busy = true);
     try {
@@ -172,6 +214,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   @override
   Widget build(BuildContext context) {
     final nativeReady = _nativeStatus['roleHeld'] == true;
+    final smsReady = _nativeStatus['smsPermissionGranted'] == true;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -204,6 +247,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                   _statusChip('Call shield', _callAutoReply ? 'Armed' : 'Off'),
                   _statusChip('Message autopilot', _smsAutoReply ? 'On' : 'Off'),
                   _statusChip('Native screening', nativeReady ? 'Active' : 'Needs role'),
+                  _statusChip('SMS sending', smsReady ? 'Ready' : 'Needs permission'),
                 ],
               ),
             ],
@@ -265,7 +309,27 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                       'Live behavior: Android call-screening can silence or reject supported incoming calls while DND is armed. It cannot speak a custom voice line on SIM calls, but ZyroAi will log and summarize the interruption.',
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      smsReady
+                          ? 'Real SMS fallback is enabled. When a screened call is rejected during DND, ZyroAi can send the busy reply as a real text message.'
+                          : 'Grant SMS permission to let ZyroAi send a real busy text to callers during DND.',
+                    ),
+                  ),
                 ],
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: smsReady ? null : _requestSmsPermission,
+                  icon: const Icon(Icons.sms_outlined),
+                  label: Text(smsReady ? 'SMS Permission Active' : 'Enable SMS Replies'),
+                ),
               ],
             ),
           ),
@@ -359,6 +423,12 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                     setState(() => _replyContext = value);
                   },
                 ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _replyNumberCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Recipient phone number'),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -388,6 +458,14 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(_autoReply),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.tonalIcon(
+                    onPressed: (_busy || !smsReady || _replyNumberCtrl.text.trim().isEmpty)
+                        ? null
+                        : _sendGeneratedSms,
+                    icon: const Icon(Icons.send_to_mobile_outlined),
+                    label: const Text('Send Real SMS'),
                   ),
                 ],
               ],

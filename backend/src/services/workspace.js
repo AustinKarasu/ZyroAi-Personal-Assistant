@@ -1,5 +1,6 @@
 ﻿import {
   getAssistantMessages,
+  getDailyQuests,
   getModeState,
   getProfile,
   getSettings,
@@ -42,6 +43,7 @@ export const buildWorkspace = async (deviceId, clientVersion = "") => {
     settings,
     profile,
     assistantMessages,
+    dailyQuests,
     steps,
     weather,
     audit,
@@ -60,6 +62,7 @@ export const buildWorkspace = async (deviceId, clientVersion = "") => {
     getSettings(deviceId),
     getProfile(deviceId),
     getAssistantMessages(deviceId),
+    getDailyQuests(deviceId),
     getStepSummary(deviceId),
     getWeatherCache(deviceId),
     listAuditLogs(deviceId).then((items) => items.slice(0, 20)),
@@ -129,6 +132,7 @@ export const buildWorkspace = async (deviceId, clientVersion = "") => {
         "How is the weather and step progress?"
       ]
     },
+    quests: dailyQuests,
     updateCenter: {
       ...updateCenter,
       appName: "ZyroAi"
@@ -153,6 +157,7 @@ export const buildWorkspace = async (deviceId, clientVersion = "") => {
       "Weather intelligence",
       "Footstep tracker",
       "Weekly monthly yearly reports",
+      "Daily wellness quests",
       "Audit logs",
       "Profile and permissions settings",
       "Supabase cloud persistence",

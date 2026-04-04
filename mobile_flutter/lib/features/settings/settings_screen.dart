@@ -12,10 +12,16 @@ import '../../core/services/motion_tracking_service.dart';
 import '../../core/services/native_telecom_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.api, required this.onThemeChanged});
+  const SettingsScreen({
+    super.key,
+    required this.api,
+    required this.onThemeChanged,
+    required this.onLanguageChanged,
+  });
 
   final ApiService api;
   final ValueChanged<String> onThemeChanged;
+  final ValueChanged<String> onLanguageChanged;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -36,6 +42,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _cityCtrl = TextEditingController();
   final _apiBaseUrlCtrl = TextEditingController();
   Timer? _autosaveTimer;
+
+  void _showSavePopup(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: error ? Colors.red.shade700 : Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
 
   @override
   void initState() {
@@ -138,6 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await NativeTelecomService.syncCallAutomation(
           dndMode: automation['dndMode'] == true,
           callAutoReply: automation['callAutoReply'] != false,
+          smsAutoReply: automation['smsAutoReply'] != false,
         );
         _callScreening = await NativeTelecomService.getCallScreeningStatus();
       }
@@ -149,12 +169,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _auditLogs = await widget.api.fetchAuditLogs();
       if (!mounted) return;
       setState(() => _autosaveStatus = 'Everything saved');
-      if (showToast) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
-      }
-    } catch (_) {
+      _showSavePopup(showToast ? 'Settings saved successfully.' : 'Changes saved automatically.');
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _autosaveStatus = 'Save failed, retrying on next change');
+      setState(() => _autosaveStatus = 'Save failed, retry on next change');
+      _showSavePopup('Saving failed: $error', error: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -185,6 +204,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         break;
       case 'notifications':
         permission = Permission.notification;
+        break;
+      case 'sms':
+        permission = Permission.sms;
         break;
       default:
         permission = Permission.microphone;
@@ -341,6 +363,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
                 onChanged: (value) {
                   setState(() => _profile['language'] = value);
+                  if (value != null) {
+                    widget.onLanguageChanged(value);
+                  }
                   _scheduleAutosave();
                 },
               ),
@@ -528,6 +553,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _scheduleAutosave();
                       }),
               ),
+              _toggleTile(
+                title: 'SMS permission',
+                subtitle: 'Needed for real busy-text auto replies and direct SMS sending.',
+                value: permissions['sms'] == true,
+                onChanged: (value) => value
+                    ? _requestPermission('sms')
+                    : setState(() {
+                        permissions['sms'] = false;
+                        _settings['permissions'] = permissions;
+                        _scheduleAutosave();
+                      }),
+              ),
             ],
           ),
         ),
@@ -545,6 +582,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   DropdownMenuItem(value: 'black-gold', child: Text('Black Gold')),
                   DropdownMenuItem(value: 'black-ice', child: Text('Black Ice')),
                   DropdownMenuItem(value: 'obsidian-blue', child: Text('Obsidian Blue')),
+                  DropdownMenuItem(value: 'carbon-emerald', child: Text('Carbon Emerald')),
+                  DropdownMenuItem(value: 'graphite-silver', child: Text('Graphite Silver')),
+                  DropdownMenuItem(value: 'midnight-rose', child: Text('Midnight Rose')),
                 ],
                 onChanged: (value) {
                   if (value == null) return;

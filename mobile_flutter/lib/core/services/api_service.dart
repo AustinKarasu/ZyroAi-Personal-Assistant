@@ -19,7 +19,7 @@ class ApiService {
   String? _cachedVersion;
   static const _workspaceCacheKey = 'workspace_cache';
   static const _apiBaseUrlKey = 'api_base_url';
-  static const _fallbackAppVersion = '1.1.8';
+  static const _fallbackAppVersion = '1.1.9';
   static const _cloudBase = 'https://zyroai-backend.vercel.app';
 
   static String _defaultBaseUrl() {
@@ -292,6 +292,19 @@ class ApiService {
 
   Future<Map<String, dynamic>> fetchReport(String period) async {
     return _requestJson('/api/reports?period=$period', error: 'Report fetch failed');
+  }
+
+  Future<Map<String, dynamic>> fetchQuests() async {
+    return _requestJson('/api/quests', error: 'Quest fetch failed');
+  }
+
+  Future<Map<String, dynamic>> toggleQuest(String questId, bool completed) async {
+    return _requestJson(
+      '/api/quests/$questId',
+      method: 'PATCH',
+      body: {'completed': completed},
+      error: 'Quest update failed',
+    );
   }
 
   Future<Map<String, dynamic>> fetchSteps() async {

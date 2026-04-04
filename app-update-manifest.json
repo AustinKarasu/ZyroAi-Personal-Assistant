@@ -1,15 +1,15 @@
 {
     "appName":  "ZyroAi",
-    "currentVersion":  "1.1.8",
-    "latestVersion":  "1.1.8",
+    "currentVersion":  "1.1.9",
+    "latestVersion":  "1.1.9",
     "channel":  "stable",
     "mandatory":  false,
-    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.8/ZyroAi-v1.1.8.apk",
+    "downloadUrl":  "https://github.com/AustinKarasu/ZyroAi-Personal-Assistant/releases/download/v1.1.9/ZyroAi-v1.1.9.apk",
     "releaseNotes":  [
-                         "Added a dedicated AI Chief page with real assistant chat and action suggestions",
-                         "Upgraded Communications, Decision, and Memory into premium mobile control surfaces",
-                         "Expanded automation controls for DND, call handling, and message autopilot",
-                         "Hardened footstep tracking with location-based fallback when raw step sensors are unreliable",
-                         "Refined mobile navigation and premium UI across the drawer and page shells"
+                         "Fixed screen loads that could stay stuck when an API request failed instead of surfacing an error state",
+                         "Rebuilt the Intelligence surface with stronger weather, movement, translation, and report actions",
+                         "Improved assistant reliability and synced AI automation changes back to native device services",
+                         "Stabilized settings autosave with explicit success and failure popups and blank-title validation support",
+                         "Added a new Quests page with daily backend-generated wellness quests that refresh by day without an app update"
                      ]
 }

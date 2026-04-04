@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
+import { generateDailyQuests } from "../services/quests.js";
 
 const dbEvents = new EventEmitter();
 const now = () => new Date().toISOString();
@@ -16,6 +17,7 @@ const FALLBACK_FILE = "chief.db.json";
 const MAX_NOTIFICATIONS = 32;
 const MAX_AUDIT_LOGS = 120;
 const MAX_REPORT_SNAPSHOTS = 24;
+const MAX_QUEST_DAYS = 21;
 const WORKSPACE_CACHE_TTL_MS = Number(process.env.WORKSPACE_CACHE_TTL_MS || 12000);
 const CLOUD_BUCKET = process.env.SUPABASE_WORKSPACE_BUCKET || "zyroai-workspaces";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -84,7 +86,8 @@ const defaultSettings = () => ({
     location: false,
     activity: false,
     notifications: false,
-    microphone: false
+    microphone: false,
+    sms: false
   },
   integrations: {
     whatsapp: { connected: false, mode: "official-api-required", status: "not_authorized", permissions: [], last_synced_at: null },
@@ -245,7 +248,8 @@ const createEmptyWorkspace = () => ({
   step_entries: [],
   weather_cache: null,
   audit_logs: [makeAuditLog("workspace.created", "Workspace initialized for this device.")],
-  report_snapshots: []
+  report_snapshots: [],
+  quest_entries: []
 });
 
 const normalizeWorkspace = (workspace = {}) => ({
@@ -292,7 +296,8 @@ const normalizeWorkspace = (workspace = {}) => ({
   step_entries: workspace.step_entries || [],
   weather_cache: workspace.weather_cache || null,
   audit_logs: workspace.audit_logs || [],
-  report_snapshots: workspace.report_snapshots || []
+  report_snapshots: workspace.report_snapshots || [],
+  quest_entries: workspace.quest_entries || []
 });
 
 const insertNotification = (workspace, title, detail, severity = "info") => {
@@ -463,31 +468,43 @@ const actionLabels = {
   profile_updated: "Profile updated.",
   steps_logged: "Daily steps updated.",
   weather_cached: "Weather cache refreshed.",
-  report_saved: "AI report snapshot saved."
+  report_saved: "AI report snapshot saved.",
+  quest_generated: "Daily quests were generated.",
+  quest_updated: "Daily quest progress changed."
 };
 
 const mutateWorkspace = async (deviceId, type, mutator, detail) => {
   const workspace = (await loadWorkspace(deviceId)) || createEmptyWorkspace();
   const result = await mutator(workspace);
   insertAuditLog(workspace, type, detail || actionLabels[type] || "Workspace action completed.");
-  await withTimeout(saveWorkspaceRow(deviceId, workspace), 3500, null);
+  await saveWorkspaceRow(deviceId, workspace);
   emitChange(deviceId, type);
   return result;
 };
 
 export const ensureUser = async (deviceId) => {
+  const cached = getCachedWorkspace(deviceId);
+  if (cached) return cached;
+
   let workspace = null;
   try {
-    workspace = await withTimeout(loadWorkspaceRow(deviceId), 1500, null);
+    workspace = await loadWorkspaceRow(deviceId);
   } catch (error) {
     console.warn(`Workspace load failed for ${deviceId}: ${error.message}`);
     storageMode = "local-fallback";
+    try {
+      workspace = await loadWorkspaceRow(deviceId);
+    } catch (fallbackError) {
+      console.warn(`Fallback workspace load failed for ${deviceId}: ${fallbackError.message}`);
+    }
   }
   if (workspace) return workspace;
   const fresh = createEmptyWorkspace();
-  saveWorkspaceRow(deviceId, fresh).catch((error) => {
-    console.warn(`Background save failed for ${deviceId}: ${error.message}`);
-  });
+  try {
+    await saveWorkspaceRow(deviceId, fresh);
+  } catch (error) {
+    console.warn(`Initial workspace save failed for ${deviceId}: ${error.message}`);
+  }
   emitChange(deviceId, "user_seeded");
   return fresh;
 };
@@ -817,6 +834,52 @@ export const listAuditLogs = async (deviceId) => {
   const workspace = await loadWorkspace(deviceId);
   return [...workspace.audit_logs].sort((a, b) => b.created_at.localeCompare(a.created_at));
 };
+
+const getQuestBundleForDate = (workspace, dateKey = todayKey()) =>
+  workspace.quest_entries.find((entry) => entry.date === dateKey) || null;
+
+export const getDailyQuests = async (deviceId, dateKey = todayKey()) => {
+  const workspace = await loadWorkspace(deviceId);
+  const existing = getQuestBundleForDate(workspace, dateKey);
+  if (existing) return existing;
+
+  return mutateWorkspace(deviceId, "quest_generated", async (mutableWorkspace) => {
+    const alreadyThere = getQuestBundleForDate(mutableWorkspace, dateKey);
+    if (alreadyThere) return alreadyThere;
+
+    const items = generateDailyQuests({
+      deviceId,
+      workspace: mutableWorkspace,
+      dateKey
+    });
+
+    const bundle = {
+      id: randomUUID(),
+      date: dateKey,
+      generated_at: now(),
+      source: process.env.OPENROUTER_API_KEY ? "ai-tailored" : "smart-local",
+      items
+    };
+
+    mutableWorkspace.quest_entries.unshift(bundle);
+    mutableWorkspace.quest_entries = mutableWorkspace.quest_entries
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, MAX_QUEST_DAYS);
+    insertNotification(mutableWorkspace, "Daily quests updated", `${items.length} wellness quests are ready for today.`, "info");
+    return bundle;
+  }, `Daily quests generated for ${dateKey}.`);
+};
+
+export const toggleQuestCompletion = async (deviceId, questId, completed) =>
+  mutateWorkspace(deviceId, "quest_updated", async (workspace) => {
+    const bundle = getQuestBundleForDate(workspace, todayKey());
+    if (!bundle) return null;
+    const quest = bundle.items.find((item) => item.id === questId);
+    if (!quest) return null;
+    quest.completed = completed;
+    quest.completed_at = completed ? now() : null;
+    return { ...bundle, items: [...bundle.items].sort((a, b) => a.order - b.order) };
+  }, `Daily quest ${completed ? "completed" : "reopened"}.`);
 
 export const getStepSummary = async (deviceId, dateKey = todayKey()) => {
   const workspace = await loadWorkspace(deviceId);

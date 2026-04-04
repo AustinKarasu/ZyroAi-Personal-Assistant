@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'core/chief_l10n.dart';
 import 'core/chief_theme.dart';
 import 'core/services/api_service.dart';
 import 'core/services/motion_tracking_service.dart';
@@ -12,6 +13,7 @@ import 'features/assistant/assistant_screen.dart';
 import 'features/communication/communication_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/decision/decision_screen.dart';
+import 'features/quests/quests_screen.dart';
 import 'features/settings/intelligence_screen.dart';
 import 'features/settings/memory_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -35,6 +37,7 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
   final _api = ApiService();
   bool _updatePromptChecked = false;
   String _themeName = 'black-gold';
+  String _languageCode = 'en';
 
   @override
   void initState() {
@@ -67,9 +70,15 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
       final settingsRes = await _api.fetchSettings();
       final settings = (settingsRes['settings'] as Map).cast<String, dynamic>();
       final appearance = (settings['appearance'] as Map?)?.cast<String, dynamic>() ?? {};
+      final profileRes = await _api.fetchProfile();
+      final profile = (profileRes['profile'] as Map).cast<String, dynamic>();
       final theme = (appearance['theme'] ?? 'black-gold').toString();
+      final language = (profile['language'] ?? 'en').toString();
       if (!mounted) return;
-      setState(() => _themeName = theme);
+      setState(() {
+        _themeName = theme;
+        _languageCode = language;
+      });
     } catch (_) {}
   }
 
@@ -78,10 +87,15 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
     setState(() => _themeName = name);
   }
 
+  void _onLanguageChanged(String code) {
+    if (!mounted) return;
+    setState(() => _languageCode = code);
+  }
+
   Future<void> _handleInstalledVersionChange() async {
     final prefs = await SharedPreferences.getInstance();
     final previousVersion = prefs.getString(_installedVersionKey);
-    String currentVersion = '1.1.8';
+    String currentVersion = '1.1.9';
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
@@ -158,135 +172,149 @@ class _ChiefAppState extends State<ChiefApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      DashboardScreen(api: _api),
-      CommunicationScreen(api: _api),
-      DecisionScreen(api: _api),
-      AssistantScreen(api: _api),
-      IntelligenceScreen(api: _api),
-      MemoryScreen(api: _api),
-      SettingsScreen(api: _api, onThemeChanged: _onThemeChanged),
-    ];
-
-    const items = [
-      (label: 'Dashboard', icon: Icons.space_dashboard_outlined),
-      (label: 'Comms', icon: Icons.call_outlined),
-      (label: 'Decision', icon: Icons.balance_outlined),
-      (label: 'Assistant', icon: Icons.auto_awesome_outlined),
-      (label: 'Intel', icon: Icons.insights_outlined),
-      (label: 'Memory', icon: Icons.memory_outlined),
-      (label: 'Settings', icon: Icons.settings_outlined),
-    ];
-
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'ZyroAi',
+      locale: Locale(_languageCode),
       theme: ChiefTheme.fromName(_themeName),
-      home: Scaffold(
-        appBar: AppBar(
-          toolbarHeight: 72,
-          titleSpacing: 0,
-          title: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.asset(
-                  'assets/images/zyroai-logo.jpg',
-                  width: 38,
-                  height: 38,
-                  fit: BoxFit.cover,
-                ),
+      home: ChiefL10nScope(
+        languageCode: _languageCode,
+        child: Builder(
+          builder: (context) {
+            final l10n = ChiefL10nScope.of(context);
+            final pages = [
+              DashboardScreen(api: _api),
+              CommunicationScreen(api: _api),
+              DecisionScreen(api: _api),
+              AssistantScreen(api: _api),
+              QuestsScreen(api: _api),
+              IntelligenceScreen(api: _api),
+              MemoryScreen(api: _api),
+              SettingsScreen(
+                api: _api,
+                onThemeChanged: _onThemeChanged,
+                onLanguageChanged: _onLanguageChanged,
               ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('ZyroAi', style: TextStyle(fontWeight: FontWeight.w800)),
-                  Text(items[_index].label, style: Theme.of(context).textTheme.bodySmall),
-                ],
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  _themeName.replaceAll('-', ' '),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
-        ),
-        drawer: Drawer(
-          backgroundColor: const Color(0xFF0B121D),
-          child: SafeArea(
-            child: Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.all(12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFF16243F), Color(0xFF0D1627)]),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: ListTile(
-                    leading: ClipRRect(
+            ];
+            final items = [
+              (label: l10n.t('dashboard'), icon: Icons.space_dashboard_outlined),
+              (label: l10n.t('comms'), icon: Icons.call_outlined),
+              (label: l10n.t('decision'), icon: Icons.balance_outlined),
+              (label: l10n.t('assistant'), icon: Icons.auto_awesome_outlined),
+              (label: l10n.t('quests'), icon: Icons.workspace_premium_outlined),
+              (label: l10n.t('intel'), icon: Icons.insights_outlined),
+              (label: l10n.t('memory'), icon: Icons.memory_outlined),
+              (label: l10n.t('settings'), icon: Icons.settings_outlined),
+            ];
+
+            return Scaffold(
+              appBar: AppBar(
+                toolbarHeight: 72,
+                titleSpacing: 0,
+                title: Row(
+                  children: [
+                    ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.asset(
                         'assets/images/zyroai-logo.jpg',
-                        width: 42,
-                        height: 42,
+                        width: 38,
+                        height: 38,
                         fit: BoxFit.cover,
                       ),
                     ),
-                    title: const Text('ZyroAi'),
-                    subtitle: const Text('Executive mobile control center'),
-                  ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(l10n.t('appName'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Text(items[_index].label, style: Theme.of(context).textTheme.bodySmall),
+                      ],
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        _themeName.replaceAll('-', ' '),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
+              ),
+              drawer: Drawer(
+                backgroundColor: const Color(0xFF0B121D),
+                child: SafeArea(
+                  child: Column(
                     children: [
-                      _drawerChip('Premium UI'),
-                      const SizedBox(width: 8),
-                      _drawerChip('AI Tools'),
+                      Container(
+                        margin: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFF16243F), Color(0xFF0D1627)]),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: ListTile(
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.asset(
+                              'assets/images/zyroai-logo.jpg',
+                              width: 42,
+                              height: 42,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          title: Text(l10n.t('appName')),
+                          subtitle: Text(l10n.t('dashboard')),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            _drawerChip(l10n.t('premiumUi')),
+                            const SizedBox(width: 8),
+                            _drawerChip(l10n.t('aiTools')),
+                          ],
+                        ),
+                      ),
+                      const Divider(),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: items.length,
+                          itemBuilder: (context, index) {
+                            final item = items[index];
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _index == index ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: ListTile(
+                                leading: Icon(item.icon),
+                                title: Text(item.label),
+                                selected: _index == index,
+                                onTap: () {
+                                  setState(() => _index = index);
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const Divider(),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _index == index ? Colors.white.withValues(alpha: 0.08) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: ListTile(
-                          leading: Icon(item.icon),
-                          title: Text(item.label),
-                          selected: _index == index,
-                          onTap: () {
-                            setState(() => _index = index);
-                            Navigator.of(context).pop();
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+              body: pages[_index],
+            );
+          },
         ),
-        body: pages[_index],
       ),
     );
   }

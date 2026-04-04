@@ -10,11 +10,13 @@ class NativeTelecomService {
   static Future<bool> syncCallAutomation({
     required bool dndMode,
     required bool callAutoReply,
+    required bool smsAutoReply,
     String replyMessage = defaultReplyMessage,
   }) async {
     final result = await _channel.invokeMethod<bool>('syncCallAutomation', {
       'dndMode': dndMode,
       'callAutoReply': callAutoReply,
+      'smsAutoReply': smsAutoReply,
       'replyMessage': replyMessage,
     });
     return result ?? false;
@@ -27,6 +29,17 @@ class NativeTelecomService {
 
   static Future<bool> requestCallScreeningRole() async {
     final result = await _channel.invokeMethod<bool>('requestCallScreeningRole');
+    return result ?? false;
+  }
+
+  static Future<bool> sendSms({
+    required String phoneNumber,
+    required String message,
+  }) async {
+    final result = await _channel.invokeMethod<bool>('sendSms', {
+      'phoneNumber': phoneNumber,
+      'message': message,
+    });
     return result ?? false;
   }
 }

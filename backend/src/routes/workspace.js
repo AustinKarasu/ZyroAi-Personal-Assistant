@@ -9,6 +9,7 @@ import {
   clearStepHistory,
   ensureUser,
   getProfile,
+  getDailyQuests,
   getSettings,
   getStepSummary,
   getWeatherCache,
@@ -21,6 +22,7 @@ import {
   setWeatherCache,
   subscribeToDeviceChanges,
   triggerEmergencyOverride,
+  toggleQuestCompletion,
   updateProfile,
   updateSettings,
   upsertTask
@@ -119,6 +121,20 @@ router.get("/reports", async (req, res) => {
   const report = buildPeriodReport(snapshot, period);
   await saveReportSnapshot(req.deviceId, report);
   return res.json({ report });
+});
+
+router.get("/quests", async (req, res) => {
+  await ensureUser(req.deviceId);
+  res.json({ quests: await getDailyQuests(req.deviceId) });
+});
+
+router.patch("/quests/:id", validateBody(schemas.toggleQuest), async (req, res) => {
+  await ensureUser(req.deviceId);
+  const quests = await toggleQuestCompletion(req.deviceId, req.params.id, req.validatedBody.completed);
+  if (!quests) {
+    return res.status(404).json({ error: "Quest not found" });
+  }
+  return res.json({ quests });
 });
 
 router.get("/weather", async (req, res) => {

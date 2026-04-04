@@ -116,7 +116,8 @@ export const schemas = {
       location: z.boolean().optional(),
       activity: z.boolean().optional(),
       notifications: z.boolean().optional(),
-      microphone: z.boolean().optional()
+      microphone: z.boolean().optional(),
+      sms: z.boolean().optional()
     }).optional(),
     integrations: z.object({
       whatsapp: integrationSchema.optional(),
@@ -128,7 +129,7 @@ export const schemas = {
   }),
   updateProfile: z.object({
     name: z.string().min(2).max(80).optional(),
-    title: z.string().min(2).max(80).optional(),
+    title: z.string().min(2).max(80).or(z.literal("")).optional(),
     email: z.string().email().or(z.literal("")).optional(),
     avatar_url: z.string().url().or(z.literal("")).optional(),
     avatar_color: z.string().min(4).max(20).optional(),
@@ -158,6 +159,9 @@ export const schemas = {
     text: z.string().min(1).max(5000),
     sourceLang: z.string().min(2).max(20),
     targetLang: z.string().min(2).max(20)
+  }),
+  toggleQuest: z.object({
+    completed: z.boolean()
   }),
   assistantChat: z.object({
     message: z.string().min(2).max(400)

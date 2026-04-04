@@ -17,6 +17,27 @@ class ChiefTheme {
           surface: const Color(0xFF1A2A4A),
           accent: const Color(0xFF5FA0FF),
         );
+      case 'carbon-emerald':
+        return _buildTheme(
+          bg: const Color(0xFF060C0A),
+          panel: const Color(0xFF111B18),
+          surface: const Color(0xFF183128),
+          accent: const Color(0xFF59D89B),
+        );
+      case 'graphite-silver':
+        return _buildTheme(
+          bg: const Color(0xFF08090B),
+          panel: const Color(0xFF17191F),
+          surface: const Color(0xFF2A2D36),
+          accent: const Color(0xFFD8DEE7),
+        );
+      case 'midnight-rose':
+        return _buildTheme(
+          bg: const Color(0xFF09060A),
+          panel: const Color(0xFF1B1118),
+          surface: const Color(0xFF311827),
+          accent: const Color(0xFFFF8EC8),
+        );
       default:
         return _buildTheme(
           bg: const Color(0xFF05070A),
